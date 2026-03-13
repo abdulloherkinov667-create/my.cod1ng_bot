@@ -15,10 +15,6 @@ from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor, yuborilmasin_sorov
 from stets import SendImg
 
-
-
-
-
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
@@ -31,13 +27,8 @@ API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-
 class VideoState(StatesGroup):
     waiting_for_link = State()
-
-
-
-
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -87,10 +78,6 @@ Bot qanday ishlaydi?
 /vd_yuklash_boshlash
 """, parse_mode="HTML")
 
-
-
-
-
 @dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
 async def start_download(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
@@ -114,13 +101,8 @@ https://www.instagram.com/p/xxxx
 Linkni yuboring 👇
 """, parse_mode="HTML")
 
-
-
-
-
 @dp.message(VideoState.waiting_for_link)
 async def download_video(message: types.Message, state: FSMContext):
-
     url = message.text
     if "instagram.com" not in url:
         await message.answer(
@@ -133,27 +115,27 @@ Masalan:
 
 https://www.instagram.com/reel/xxxx
 """, parse_mode="HTML")
-        
         return
 
     msg = await message.answer(
         """
 ⏳ <b>Video yuklanmoqda...</b>
 
-Iltimos biroz kuting.
+Iltimos biroz kiting.
 
 Bot video faylni yuklab olib sizga yubormoqda.
 """, parse_mode="HTML")
 
     ydl_opts = {
-        'format': 'mp4/best',
+        'format': 'best',
         'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
+        'proxy': PROXY_URL,
         'quiet': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0'
-        }
-        }
-
+        'no_warnings': True,
+        'add_header': [
+            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
+        ]
+    }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -175,10 +157,8 @@ Agar yana video yuklamoqchi bo'lsangiz yangi link yuboring.
 🚀 Bot: @my_codingbot
 """, parse_mode="HTML" )
             
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-
+            if os.path.exists(file_path):
+                os.remove(file_path)
 
     except Exception as e:
         logging.error(e)
@@ -195,22 +175,14 @@ Sabablari:
 Iltimos boshqa video link yuborib ko'ring.
 """, parse_mode="HTML")
         
-    await msg.delete()
-    await state.clear()
-
-
-
-
+    finally:
+        await msg.delete()
+        await state.clear()
 
 async def main():
     logging.basicConfig(level=logging.INFO)
     print("Bot ishga tushdi...")
     await dp.start_polling(bot)
 
-
-
-
-
 if __name__ == "__main__":
-
     asyncio.run(main())
