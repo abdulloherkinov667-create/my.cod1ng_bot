@@ -72,7 +72,7 @@ class InstaVideoState(StatesGroup):
 
 
 # ⬇️ Instagram video yuklashni boshlash buyrug‘i
-@dp.message(lambda m: m.text == "/insta_video_boshlash")
+@dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
 async def insta_video_start(message: types.Message, state: FSMContext):
     await state.set_state(InstaVideoState.waiting_for_insta_link)
     await message.answer("📥 Iltimos, Instagram video linkini yuboring:")
