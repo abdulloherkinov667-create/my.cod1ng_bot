@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import os
 import yt_dlp
 
@@ -15,20 +16,28 @@ from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor, yuborilmasin_sorov
 from stets import SendImg
 
+
+
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
+
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
 ADMIN_ID = [6411347321]
-API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
+API_TOKEN = "8301002449:AAHoIQ5PFqLzG1qU-ctYab1QZFZptI6Y8dw"
+
 
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
+
 class VideoState(StatesGroup):
     waiting_for_link = State()
+
+
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -43,145 +52,141 @@ async def start_command(message: types.Message):
     )
 
     if message.from_user.id in ADMIN_ID:
-        await message.answer(
-            f"""
-🌟 <b>Assalomu alaykum hurmatli Admin!</b>
-
-Siz botning administratorisiz.
-
-Bot orqali quyidagi ishlarni bajarishingiz mumkin:
-
-👥 Foydalanuvchilar ro'yxatini ko'rish
-📨 Barcha foydalanuvchilarga xabar yuborish
-📄 Foydalanuvchilarni PDF qilib yuklab olish
-
-Kerakli bo'limni pastdagi tugmalar orqali tanlang.
-""", reply_markup=user_button(), parse_mode="HTML")
-
+        text = (
+            f"👑 <b>Admin panelga xush kelibsiz!</b>\n\n"
+            f"Salom, <b>{message.from_user.first_name}</b>.\n"
+            "Siz bot administratorisiz.\n\n"
+            "Kerakli bo‘limni tanlang 👇"
+        )
+        await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
-        await message.answer(
-            """
-👋 <b>Assalomu alaykum!</b>
+        text = (
+            "👋 <b>Botga xush kelibsiz!</b>\n\n"
+            "📥 <b>/vd_yuklash_boshlash</b> buyrug'ini bosing."
+        )
+        await message.answer(text, parse_mode="HTML")
 
-🎬 Ushbu bot orqali siz <b>Instagram videolarini juda oson yuklab olishingiz mumkin.</b>
 
-Bot qanday ishlaydi?
-
-1️⃣ Instagramga kiring
-2️⃣ Video yoki Reel linkini nusxa oling
-3️⃣ Shu botga yuboring
-
-📥 Bot sizga videoni yuklab beradi.
-
-🚀 Boshlash uchun quyidagi buyruqni bosing:
-
-/vd_yuklash_boshlash
-""", parse_mode="HTML")
 
 @dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
-async def start_download(message: types.Message, state: FSMContext):
+async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
-    await message.answer(
-        """
-🔗 <b>Instagram video linkini yuboring</b>
+    await message.answer("📥 Instagram video linkini yuboring")
 
-Quyidagi turdagi linklar ishlaydi:
 
-• Post video
-• Reel video
-
-Masalan:
-
-https://www.instagram.com/reel/xxxx
-
-Yoki
-
-https://www.instagram.com/p/xxxx
-
-Linkni yuboring 👇
-""", parse_mode="HTML")
 
 @dp.message(VideoState.waiting_for_link)
-async def download_video(message: types.Message, state: FSMContext):
+async def vd_yuklash(message: types.Message, state: FSMContext):
     url = message.text
     if "instagram.com" not in url:
-        await message.answer(
-            """
-❌ <b>Noto'g'ri link yuborildi!</b>
-
-Iltimos faqat Instagram video linkini yuboring.
-
-Masalan:
-
-https://www.instagram.com/reel/xxxx
-""", parse_mode="HTML")
+        await message.answer("❌ Iltimos, to'g'ri Instagram linkini yuboring.")
         return
 
-    msg = await message.answer(
-        """
-⏳ <b>Video yuklanmoqda...</b>
-
-Iltimos biroz kiting.
-
-Bot video faylni yuklab olib sizga yubormoqda.
-""", parse_mode="HTML")
-
+    status_msg = await message.answer("⌛ Video yuklanmoqda...")
+    
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
-        'proxy': PROXY_URL,
+        'merge_output_format': 'mp4',
         'quiet': True,
         'no_warnings': True,
-        'add_header': [
-            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36')
-        ]
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-
+            
             if not file_path.endswith(".mp4"):
                 file_path = file_path.rsplit('.', 1)[0] + ".mp4"
 
+            video_file = FSInputFile(file_path)
             await message.answer_video(
-                FSInputFile(file_path),
-                caption="""
-✅ <b>Video muvaffaqiyatli yuklab olindi!</b>
-
-📥 Instagram videosi tayyor.
-
-Agar yana video yuklamoqchi bo'lsangiz yangi link yuboring.
-
-🚀 Bot: @my_codingbot
-""", parse_mode="HTML" )
+                video_file, 
+                caption="✅ Video yuklandi!\n\n@my_codingbot",
+                parse_mode="Markdown"
+            )
             
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     except Exception as e:
-        logging.error(e)
-        await message.answer(
-            """
-❌ <b>Video yuklab bo'lmadi!</b>
-
-Sabablari:
-
-• Video yopiq profil bo'lishi mumkin
-• Instagram videoni bloklagan bo'lishi mumkin
-• Link noto'g'ri bo'lishi mumkin
-
-Iltimos boshqa video link yuborib ko'ring.
-""", parse_mode="HTML")
-        
+        print(f"Xato: {e}")
+        await message.answer("⚠️ Xatolik! Link noto'g'ri yoki video yopiq profildan olingan.")
+    
     finally:
-        await msg.delete()
+        await status_msg.delete()
         await state.clear()
+
+
+
+@dp.message(F.text == "Userlarni PDF korsh 👥")
+async def show_users(message: types.Message):
+    if message.from_user.id in ADMIN_ID:
+        pdf_file = create_user_pdf()
+        await message.answer_document(FSInputFile(pdf_file), caption="📄 Foydalanuvchilar ro'yxati")
+
+
+
+@dp.message(F.text == "Xabar yuborish 📨")
+async def xabar_yuborish_boshlash(message: types.Message):
+    await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
+
+
+
+@dp.callback_query(F.data == "img")
+async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
+    await callback.message.answer("🖼 Rasmni yuklang.")
+    await state.set_state(SendImg.image)
+    await callback.answer()
+
+
+
+@dp.message(SendImg.image, F.photo)
+async def rasm_qabul(message: types.Message, state: FSMContext):
+    await state.update_data(photo=message.photo[-1].file_id)
+    await message.answer("✏️ Rasm uchun matn kiriting")
+    await state.set_state(SendImg.about)
+
+
+
+@dp.message(SendImg.about)
+async def caption_qabul(message: types.Message, state: FSMContext):
+    await state.update_data(about=message.text)
+    data = await state.get_data()
+    await message.answer_photo(photo=data["photo"], caption=data["about"], parse_mode="HTML")
+    await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
+    await state.set_state(SendImg.confirm)
+
+
+
+@dp.message(SendImg.confirm, F.text == "Xa ✅")
+async def yubor(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    users = get_all_users()
+    count = 0
+    for user in users:
+        try:
+            await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
+            count += 1
+        except: continue
+    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
+    await state.clear()
+
+
+
+@dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
+async def bekor(message: types.Message, state: FSMContext):
+    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
+    await state.clear()
+
+
+
+
+
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-    print("Bot ishga tushdi...")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
