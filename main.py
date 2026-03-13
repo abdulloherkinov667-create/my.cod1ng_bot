@@ -79,44 +79,40 @@ async def insta_video_download(message: types.Message, state: FSMContext):
 
     status_msg = await message.answer("⌛ Video yuklanmoqda...")
 
-    # Siz so'ragan professional va tartibli ydl_opts formati
+    # Sizga yoqqan professional va tartibli ydl_opts formati
     ydl_opts = {
         'format': 'best',
-        'proxy': PROXY_URL,  # Serverda ishlashi uchun shart!
+        'proxy': PROXY_URL,
         'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
-        'merge_output_format': 'mp4',
         'quiet': True,
         'no_warnings': True,
         'add_header': [
             ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
         ],
+        # AGAR XATO DAVOM ETSA: 'cookies.txt' faylini serverga yuklab, pastdagi qatorni yoqing
+        # 'cookiefile': 'instagram_cookies.txt', 
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Ma'lumotni yuklash
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
 
-            # Fayl kengaytmasini tekshirish
             if not file_path.endswith(".mp4"):
                 file_path = file_path.rsplit('.', 1)[0] + ".mp4"
 
-            # Videoni yuborish
-            video_file = FSInputFile(file_path)
             await message.answer_video(
-                video_file,
+                FSInputFile(file_path),
                 caption="✅ Video yuklandi!\n\n@my_codingbot",
                 parse_mode="Markdown"
             )
 
-            # Serverni tozalash
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     except Exception as e:
-        print(f"Xato: {e}")
-        await message.answer("⚠️ Xatolik! Instagram bizni bloklagan bo'lishi mumkin yoki video yopiq profildan.")
+        logging.error(f"Xato: {e}")
+        await message.answer("❌ <b>Xatolik!</b>\nInstagram bizni vaqtincha blokladi. Iltimos, 5-10 daqiqa kutib qayta urinib ko'ring.")
     
     finally:
         await status_msg.delete()
