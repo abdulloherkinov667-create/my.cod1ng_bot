@@ -8,15 +8,17 @@ from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
+from aiogram.client.session.aiohttp import AiohttpSession
 
 from buttons.defould import user_button, yoq_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor, yuborilmasin_sorov
 from stets import SendImg
-from aiogram.client.session.aiohttp import AiohttpSession
 
 
-# PythonAnywhere uchun proxy manzili
+
+
+
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
@@ -24,13 +26,15 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 ADMIN_ID = [6411347321]
-API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
+API_TOKEN = "TOKEN"
 
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
+
 class VideoState(StatesGroup):
     waiting_for_link = State()
+
 
 
 
@@ -44,7 +48,8 @@ async def start_command(message: types.Message):
         language_code=message.from_user.language_code,
         is_bot=message.from_user.is_bot,
         chat_id=message.chat.id,
-        created_at=message.date)
+        created_at=message.date
+    )
 
     if message.from_user.id in ADMIN_ID:
         await message.answer(
@@ -71,20 +76,23 @@ Kerakli bo'limni pastdagi tugmalar orqali tanlang.
 
 Bot qanday ishlaydi?
 
-1️⃣ Instagramga kiring  
-2️⃣ Video yoki Reel linkini nusxa oling  
-3️⃣ Shu botga yuboring  
+1️⃣ Instagramga kiring
+2️⃣ Video yoki Reel linkini nusxa oling
+3️⃣ Shu botga yuboring
 
 📥 Bot sizga videoni yuklab beradi.
 
 🚀 Boshlash uchun quyidagi buyruqni bosing:
 
-/vd_yuklash_boshlash """, parse_mode="HTML")
+/vd_yuklash_boshlash
+""", parse_mode="HTML")
+
+
+
 
 
 @dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
 async def start_download(message: types.Message, state: FSMContext):
-
     await state.set_state(VideoState.waiting_for_link)
     await message.answer(
         """
@@ -107,10 +115,13 @@ Linkni yuboring 👇
 """, parse_mode="HTML")
 
 
+
+
+
 @dp.message(VideoState.waiting_for_link)
 async def download_video(message: types.Message, state: FSMContext):
-    url = message.text
 
+    url = message.text
     if "instagram.com" not in url:
         await message.answer(
             """
@@ -121,9 +132,8 @@ Iltimos faqat Instagram video linkini yuboring.
 Masalan:
 
 https://www.instagram.com/reel/xxxx
-""",
-            parse_mode="HTML"
-        )
+""", parse_mode="HTML")
+        
         return
 
     msg = await message.answer(
@@ -142,21 +152,20 @@ Bot video faylni yuklab olib sizga yubormoqda.
         'http_headers': {
             'User-Agent': 'Mozilla/5.0'
         }
-}
-    
+        }
+
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-
             info = ydl.extract_info(url, download=True)
-
             file_path = ydl.prepare_filename(info)
 
             if not file_path.endswith(".mp4"):
                 file_path = file_path.rsplit('.', 1)[0] + ".mp4"
 
             await message.answer_video(
-            FSInputFile(file_path),
-            caption="""
+                FSInputFile(file_path),
+                caption="""
 ✅ <b>Video muvaffaqiyatli yuklab olindi!</b>
 
 📥 Instagram videosi tayyor.
@@ -164,12 +173,11 @@ Bot video faylni yuklab olib sizga yubormoqda.
 Agar yana video yuklamoqchi bo'lsangiz yangi link yuboring.
 
 🚀 Bot: @my_codingbot
-""",parse_mode="HTML")
-        
-        
-        
+""", parse_mode="HTML" )
+            
         if os.path.exists(file_path):
             os.remove(file_path)
+
 
 
     except Exception as e:
@@ -186,9 +194,9 @@ Sabablari:
 
 Iltimos boshqa video link yuborib ko'ring.
 """, parse_mode="HTML")
+        
     await msg.delete()
     await state.clear()
-
 
 
 
@@ -200,5 +208,9 @@ async def main():
     await dp.start_polling(bot)
 
 
+
+
+
 if __name__ == "__main__":
+
     asyncio.run(main())
