@@ -13,9 +13,12 @@ from buttons.defould import user_button, yoq_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor, yuborilmasin_sorov
 from stets import SendImg
+from aiogram.client.session.aiohttp import AiohttpSession
 
 
-
+# PythonAnywhere uchun proxy manzili
+PROXY_URL = 'http://proxy.server:3128'
+session = AiohttpSession(proxy=PROXY_URL)
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -23,7 +26,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 ADMIN_ID = [6411347321]
 API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
 
-bot = Bot(token=API_TOKEN)
+bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
 class VideoState(StatesGroup):
