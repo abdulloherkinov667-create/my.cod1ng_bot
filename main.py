@@ -26,7 +26,7 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 ADMIN_ID = [6411347321]
-API_TOKEN = "TOKEN"
+API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
 
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
