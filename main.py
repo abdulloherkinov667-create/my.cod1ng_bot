@@ -67,23 +67,27 @@ async def start_command(message: types.Message):
         await message.answer(text, parse_mode="HTML")
 
 
-
-@dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
-async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
-    await state.set_state(VideoState.waiting_for_link)
-    await message.answer("📥 Instagram video linkini yuboring")
+class InstaVideoState(StatesGroup):
+    waiting_for_insta_link = State()
 
 
+# ⬇️ Instagram video yuklashni boshlash buyrug‘i
+@dp.message(lambda m: m.text == "/insta_video_boshlash")
+async def insta_video_start(message: types.Message, state: FSMContext):
+    await state.set_state(InstaVideoState.waiting_for_insta_link)
+    await message.answer("📥 Iltimos, Instagram video linkini yuboring:")
 
-@dp.message(VideoState.waiting_for_link)
-async def vd_yuklash(message: types.Message, state: FSMContext):
+
+# ⬇️ Instagram video link qabul qilish va yuklash
+@dp.message(InstaVideoState.waiting_for_insta_link)
+async def insta_video_download(message: types.Message, state: FSMContext):
     url = message.text
     if "instagram.com" not in url:
         await message.answer("❌ Iltimos, to'g'ri Instagram linkini yuboring.")
         return
 
     status_msg = await message.answer("⌛ Video yuklanmoqda...")
-    
+
     ydl_opts = {
         'format': 'best',
         'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
@@ -96,23 +100,23 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-            
+
             if not file_path.endswith(".mp4"):
                 file_path = file_path.rsplit('.', 1)[0] + ".mp4"
 
             video_file = FSInputFile(file_path)
             await message.answer_video(
-                video_file, 
+                video_file,
                 caption="✅ Video yuklandi!\n\n@my_codingbot",
                 parse_mode="Markdown"
             )
-            
+
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     except Exception as e:
         print(f"Xato: {e}")
-        await message.answer("⚠️ Xatolik! Link noto'g'ri yoki video yopiq profildan olingan.")
+        await message.answer("⚠️ Xatolik! Link noto'g'ri yoki yopiq profildan olingan.")
     
     finally:
         await status_msg.delete()
