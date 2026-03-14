@@ -16,26 +16,29 @@ from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor, yuborilmasin_sorov
 from stets import SendImg
 
-# --- SOZLAMALAR ---
+
+
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
+
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
 ADMIN_ID = [6411347321]
 API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
+
 
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
+
 class VideoState(StatesGroup):
     waiting_for_link = State()
 
-class InstaVideoState(StatesGroup):
-    waiting_for_insta_link = State()
 
-# --- START BUYRUQ ---
+
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
     await users_table()
@@ -52,8 +55,8 @@ async def start_command(message: types.Message):
         text = (
             f"👑 <b>Admin panelga xush kelibsiz!</b>\n\n"
             f"Salom, <b>{message.from_user.first_name}</b>.\n"
-            f"Siz bot administratorisiz.\n\n"
-            f"Kerakli bo‘limni tanlang 👇"
+            "Siz bot administratorisiz.\n\n"
+            "Kerakli bo‘limni tanlang 👇"
         )
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
@@ -63,62 +66,59 @@ async def start_command(message: types.Message):
         )
         await message.answer(text, parse_mode="HTML")
 
-# --- VIDEO YUKLASH QISMI ---
+
 
 @dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
-async def insta_video_start(message: types.Message, state: FSMContext):
-    await state.set_state(InstaVideoState.waiting_for_insta_link)
-    await message.answer("📥 Iltimos, Instagram video linkini yuboring:")
+async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
+    await state.set_state(VideoState.waiting_for_link)
+    await message.answer("📥 Instagram video linkini yuboring")
 
-@dp.message(InstaVideoState.waiting_for_insta_link)
-async def insta_video_download(message: types.Message, state: FSMContext):
+
+
+@dp.message(VideoState.waiting_for_link)
+async def vd_yuklash(message: types.Message, state: FSMContext):
     url = message.text
     if "instagram.com" not in url:
         await message.answer("❌ Iltimos, to'g'ri Instagram linkini yuboring.")
         return
 
     status_msg = await message.answer("⌛ Video yuklanmoqda...")
-
-    # Sizga yoqqan professional va tartibli ydl_opts formati
+    
     ydl_opts = {
         'format': 'best',
-        'proxy': PROXY_URL,
         'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
+        'merge_output_format': 'mp4',
         'quiet': True,
         'no_warnings': True,
-        'add_header': [
-            ('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
-        ],
-        # AGAR XATO DAVOM ETSA: 'cookies.txt' faylini serverga yuklab, pastdagi qatorni yoqing
-        # 'cookiefile': 'instagram_cookies.txt', 
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-
+            
             if not file_path.endswith(".mp4"):
                 file_path = file_path.rsplit('.', 1)[0] + ".mp4"
 
+            video_file = FSInputFile(file_path)
             await message.answer_video(
-                FSInputFile(file_path),
+                video_file, 
                 caption="✅ Video yuklandi!\n\n@my_codingbot",
                 parse_mode="Markdown"
             )
-
+            
             if os.path.exists(file_path):
                 os.remove(file_path)
 
     except Exception as e:
-        logging.error(f"Xato: {e}")
-        await message.answer("❌ <b>Xatolik!</b>\nInstagram bizni vaqtincha blokladi. Iltimos, 5-10 daqiqa kutib qayta urinib ko'ring.")
+        print(f"Xato: {e}")
+        await message.answer("⚠️ Xatolik! Link noto'g'ri yoki video yopiq profildan olingan.")
     
     finally:
         await status_msg.delete()
         await state.clear()
 
-# --- ADMIN PANEL VA XABAR YUBORISH (O'zgarishsiz) ---
+
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
@@ -126,9 +126,13 @@ async def show_users(message: types.Message):
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="📄 Foydalanuvchilar ro'yxati")
 
+
+
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
     await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
+
+
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
@@ -136,11 +140,15 @@ async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(SendImg.image)
     await callback.answer()
 
+
+
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await message.answer("✏️ Rasm uchun matn kiriting")
     await state.set_state(SendImg.about)
+
+
 
 @dp.message(SendImg.about)
 async def caption_qabul(message: types.Message, state: FSMContext):
@@ -149,6 +157,8 @@ async def caption_qabul(message: types.Message, state: FSMContext):
     await message.answer_photo(photo=data["photo"], caption=data["about"], parse_mode="HTML")
     await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
     await state.set_state(SendImg.confirm)
+
+
 
 @dp.message(SendImg.confirm, F.text == "Xa ✅")
 async def yubor(message: types.Message, state: FSMContext):
@@ -163,10 +173,17 @@ async def yubor(message: types.Message, state: FSMContext):
     await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
 
+
+
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
     await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
+
+
+
+
+
 
 async def main():
     logging.basicConfig(level=logging.INFO)
