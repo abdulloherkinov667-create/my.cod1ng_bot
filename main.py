@@ -4,6 +4,7 @@ import os
 import instaloader
 import re
 
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile
@@ -16,15 +17,15 @@ from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor, yuborilmasin_sorov
 from stets import SendImg
 
+
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
-DOWNLOAD_DIR = "downloads"
-os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
-
 ADMIN_ID = [6411347321]
 API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
+
+DOWNLOAD_DIR = "downloads"
+os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
@@ -32,14 +33,15 @@ dp = Dispatcher()
 loader = instaloader.Instaloader(
     dirname_pattern=DOWNLOAD_DIR,
     download_videos=True,
-    download_video_thumbnails=False,
-    download_comments=False,
-    save_metadata=False,
-    compress_json=False
+    download_video_thumbnails=True,
+    download_comments=True,
+    save_metadata=True
 )
+
 
 class VideoState(StatesGroup):
     waiting_for_link = State()
+
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -120,40 +122,33 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 
 🤖 Agar davomiy muammo bo‘lsa, bot orqali yordam so‘rashingiz mumkin: @my_codingpython """)
         await state.clear()
-        
-        
 
-def download_instagram(shortcode):
-    # Bu funksiya Reels va Postlarni birdek yuklaydi
-    post = instaloader.Post.from_shortcode(loader.context, shortcode)
-    loader.download_post(post, target=DOWNLOAD_DIR)
-    
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="📄 Foydalanuvchilar ro'yxati")
-        
+
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
     await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
-    
+
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("🖼 Rasmni yuklang.")
     await state.set_state(SendImg.image)
     await callback.answer()
-    
+
 
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await message.answer("✏️ Rasm uchun matn kiriting")
     await state.set_state(SendImg.about)
-    
+
 
 @dp.message(SendImg.about)
 async def caption_qabul(message: types.Message, state: FSMContext):
@@ -162,7 +157,7 @@ async def caption_qabul(message: types.Message, state: FSMContext):
     await message.answer_photo(photo=data["photo"], caption=data["about"], parse_mode="HTML")
     await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
     await state.set_state(SendImg.confirm)
-    
+
 
 @dp.message(SendImg.confirm, F.text == "Xa ✅")
 async def yubor(message: types.Message, state: FSMContext):
@@ -185,12 +180,10 @@ async def bekor(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-
-
-
 async def main():
     logging.basicConfig(level=logging.INFO)
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
