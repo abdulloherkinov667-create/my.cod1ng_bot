@@ -27,7 +27,7 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 
 ADMIN_ID = [6411347321]
-API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
+API_TOKEN = "8301002449:AAHoIQ5PFqLzG1qU-ctYab1QZFZptI6Y8dw"
 
 
 bot = Bot(token=API_TOKEN, session=session)
@@ -82,7 +82,7 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
         await message.answer("❌ Iltimos, to'g'ri Instagram linkini yuboring.")
         return
 
-    status_msg = await message.answer("⌛ Video yuklanmoqda...")
+    status_msg = await message.answer("⌛ Video qayta ishlanmoqda...")
     
     ydl_opts = {
         'format': 'best',
@@ -90,33 +90,56 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
         'merge_output_format': 'mp4',
         'quiet': True,
         'no_warnings': True,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.instagram.com/',
+        },
+
     }
 
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
-            
-            if not file_path.endswith(".mp4"):
-                file_path = file_path.rsplit('.', 1)[0] + ".mp4"
-
+        loop = asyncio.get_event_loop()
+        info = await loop.run_in_executor(None, lambda: download_video(url, ydl_opts))
+        
+        if info:
+            file_path = info.get('file_path')
             video_file = FSInputFile(file_path)
+            
             await message.answer_video(
                 video_file, 
-                caption="✅ Video yuklandi!\n\n@my_codingbot",
-                parse_mode="Markdown"
+                caption="✅ Video tayyor!\n\n@my_codingbot",
+                parse_mode="HTML"
             )
             
             if os.path.exists(file_path):
                 os.remove(file_path)
+        else:
+            raise Exception("Ma'lumot topilmadi")
 
     except Exception as e:
-        print(f"Xato: {e}")
-        await message.answer("⚠️ Xatolik! Link noto'g'ri yoki video yopiq profildan olingan.")
+        error_str = str(e)
+        if "429" in error_str or "Too Many Requests" in error_str:
+            await message.answer("⚠️ Instagram juda ko'p so'rov yuborganimiz uchun bizni vaqtincha chekladi. 10-15 daqiqa kuting.")
+        elif "403" in error_str:
+            await message.answer("🚫 Bu video yopiq profildan yoki ruxsat berilmagan hududdan olingan.")
+        else:
+            await message.answer("⚠️ Xatolik yuz berdi. Linkni tekshiring yoki keyinroq urinib ko'ring.")
+        print(f"Log xatosi: {e}")
     
     finally:
         await status_msg.delete()
         await state.clear()
+
+# Alohida yordamchi funksiya (yt-dlp uchun)
+def download_video(url, opts):
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return {
+            'file_path': ydl.prepare_filename(info),
+            'id': info.get('id')
+        }
 
 
 
