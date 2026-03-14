@@ -1,8 +1,8 @@
 import asyncio
 import logging
 import os
-import instaloader
 import re
+import yt_dlp
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
@@ -18,6 +18,7 @@ from buttons.inline import xabar_yubor
 from stets import SendImg
 
 # --- KONFIGURATSIYA ---
+# Eslatma: Agar proxy ishlamasa, session qismini Bot ichidan olib tashlang
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
@@ -30,33 +31,29 @@ API_TOKEN = "8301002449:AAEUdfgageMiEIX-qfIAWc73owqOzkRHqtE"
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-# Instaloader sozlamalari
-loader = instaloader.Instaloader(
-    dirname_pattern=DOWNLOAD_DIR,
-    download_videos=True,
-    download_video_thumbnails=False,
-    download_comments=False,
-    save_metadata=False,
-    compress_json=False,
-    post_metadata_txt_pattern="" # Ortiqcha matnli fayllar yaratmasligi uchun
-)
-
 class VideoState(StatesGroup):
     waiting_for_link = State()
 
-# --- YUKLASH FUNKSIYASI ---
-def download_instagram(shortcode):
-    """Instagramdan post yoki reelni yuklab beruvchi funksiya"""
-    # Avval papkani tozalash (eski fayllar bilan adashib ketmaslik uchun)
+# --- YUKLASH FUNKSIYASI (YT-DLP) ---
+def download_video(url):
+    """Instagram linkidan video yoki rasmni eng sifatli holatda yuklash"""
+    # Papkani tozalash
     for f in os.listdir(DOWNLOAD_DIR):
-        if not f.startswith("."): # Yashirin fayllarga tegmaslik
+        if not f.startswith("."):
             os.remove(os.path.join(DOWNLOAD_DIR, f))
-            
-    post = instaloader.Post.from_shortcode(loader.context, shortcode)
-    loader.download_post(post, target=DOWNLOAD_DIR)
-    return True
 
-# --- HANDLERLAR ---
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{DOWNLOAD_DIR}/%(id)s.%(ext)s',
+        'quiet': True,
+        'no_warnings': True,
+    }
+
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        return ydl.prepare_filename(info)
+
+# --- ASOSIY HANDLERLAR ---
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -92,49 +89,37 @@ async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
 @dp.message(VideoState.waiting_for_link)
 async def vd_yuklash(message: types.Message, state: FSMContext):
     url = message.text
-    
-    # Instagram linkidan shortcodeni aniqlash (Regex bilan)
-    regex = r"(?:https?://)?(?:www\.)?instagram\.com/(?:p|reels|reel)/([^/?#&]+)"
-    match = re.search(regex, url)
-    
-    if not match:
-        await message.answer("❌ Iltimos, to'g'ri Instagram link yuboring (Reels yoki Post).")
+    if "instagram.com" not in url:
+        await message.answer("❌ Iltimos, to'g'ri Instagram link yuboring.")
         return
 
-    shortcode = match.group(1)
-    status_msg = await message.answer("⌛ Video tahlil qilinmoqda va yuklanmoqda...")
+    status_msg = await message.answer("⌛ Video yuklanmoqda, iltimos kuting...")
 
     try:
-        # Yuklash jarayonini async ichida bloklamasdan ishga tushirish
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, download_instagram, shortcode)
+        file_path = await loop.run_in_executor(None, download_video, url)
 
-        files_found = False
-        # Yuklangan fayllarni yuborish
-        for file in os.listdir(DOWNLOAD_DIR):
-            path = os.path.join(DOWNLOAD_DIR, file)
-            
-            if file.endswith(".mp4"):
+        if os.path.exists(file_path):
+            # Video yoki rasm ekanligini tekshirish
+            if file_path.lower().endswith(('.mp4', '.mkv', '.mov')):
                 await message.answer_video(
-                    FSInputFile(path),
+                    FSInputFile(file_path),
                     caption="✅ Video muvaffaqiyatli yuklandi!\n\n@my_codingbot"
                 )
-                files_found = True
-            elif file.endswith(".jpg") and not files_found:
-                # Agar video bo'lmasa rasm yuborish (Postlar uchun)
-                await message.answer_photo(FSInputFile(path), caption="✅ Rasm yuklandi!")
-                files_found = True
-
-            # Faylni yuborgandan keyin o'chirish (Xotirani tozalash)
-            if os.path.exists(path):
-                os.remove(path)
-
-        if not files_found:
-            await message.answer("⚠️ Video topilmadi. Profil yopiq bo'lishi mumkin.")
+            else:
+                await message.answer_photo(
+                    FSInputFile(file_path),
+                    caption="✅ Rasm muvaffaqiyatli yuklandi!\n\n@my_codingbot"
+                )
+            
+            # Faylni o'chirish
+            os.remove(file_path)
+        else:
+            await message.answer("⚠️ Fayl topilmadi. Qaytadan urinib ko'ring.")
 
     except Exception as e:
         logging.error(f"Yuklashda xatolik: {e}")
-        await message.answer("⚠️ Xatolik yuz berdi. Linkni tekshiring yoki keyinroq urinib ko'ring.")
+        await message.answer("⚠️ Xatolik yuz berdi. Profil yopiq bo'lishi yoki link xato bo'lishi mumkin.")
 
     finally:
         await status_msg.delete()
@@ -179,6 +164,7 @@ async def yubor(message: types.Message, state: FSMContext):
     count = 0
     for user in users:
         try:
+            # foydalanuvchi bazada chat_id qaysi indexda bo'lsa shuni tanlang (odatda 3 yoki user_id)
             await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
             count += 1
         except:
@@ -191,6 +177,7 @@ async def bekor(message: types.Message, state: FSMContext):
     await message.answer("❌ Bekor qilindi.", reply_markup=user_button())
     await state.clear()
 
+# --- RUN BOT ---
 async def main():
     logging.basicConfig(level=logging.INFO)
     await dp.start_polling(bot)
