@@ -11,11 +11,13 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.session.aiohttp import AiohttpSession
 
-from buttons.defould import user_button, yoq_button, send_confirmation_buttons
+# Tugmalar va bazaga oid funksiyalar (Sizning fayllaringizdan)
+from buttons.defould import user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users
-from buttons.inline import xabar_yubor, yuborilmasin_sorov
+from buttons.inline import xabar_yubor
 from stets import SendImg
 
+# --- KONFIGURATSIYA ---
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
@@ -35,11 +37,26 @@ loader = instaloader.Instaloader(
     download_video_thumbnails=False,
     download_comments=False,
     save_metadata=False,
-    compress_json=False
+    compress_json=False,
+    post_metadata_txt_pattern="" # Ortiqcha matnli fayllar yaratmasligi uchun
 )
 
 class VideoState(StatesGroup):
     waiting_for_link = State()
+
+# --- YUKLASH FUNKSIYASI ---
+def download_instagram(shortcode):
+    """Instagramdan post yoki reelni yuklab beruvchi funksiya"""
+    # Avval papkani tozalash (eski fayllar bilan adashib ketmaslik uchun)
+    for f in os.listdir(DOWNLOAD_DIR):
+        if not f.startswith("."): # Yashirin fayllarga tegmaslik
+            os.remove(os.path.join(DOWNLOAD_DIR, f))
+            
+    post = instaloader.Post.from_shortcode(loader.context, shortcode)
+    loader.download_post(post, target=DOWNLOAD_DIR)
+    return True
+
+# --- HANDLERLAR ---
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -57,86 +74,73 @@ async def start_command(message: types.Message):
         text = (
             f"👑 <b>Admin panelga xush kelibsiz!</b>\n\n"
             f"Salom, <b>{message.from_user.first_name}</b>.\n"
-            "Siz bot administratorisiz.\n\n"
             "Kerakli bo‘limni tanlang 👇"
         )
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
         text = (
             "👋 <b>Botga xush kelibsiz!</b>\n\n"
-            "📥 <b>/vd_yuklash_boshlash</b> buyrug'ini bosing."
+            "📥 Instagramdan video yuklash uchun <b>/vd_yuklash_boshlash</b> buyrug'ini bosing."
         )
         await message.answer(text, parse_mode="HTML")
 
-@dp.message(lambda m: m.text == "/vd_yuklash_boshlash")
+@dp.message(F.text == "/vd_yuklash_boshlash")
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
-    await message.answer("📥 Instagram Reels yoki Post linkini yuboring")
+    await message.answer("📥 Instagram Reels yoki Post linkini yuboring:")
 
 @dp.message(VideoState.waiting_for_link)
 async def vd_yuklash(message: types.Message, state: FSMContext):
     url = message.text
-
-    if "instagram.com" not in url:
-        await message.answer("❌ Iltimos, to'g'ri Instagram link yuboring.")
+    
+    # Instagram linkidan shortcodeni aniqlash (Regex bilan)
+    regex = r"(?:https?://)?(?:www\.)?instagram\.com/(?:p|reels|reel)/([^/?#&]+)"
+    match = re.search(regex, url)
+    
+    if not match:
+        await message.answer("❌ Iltimos, to'g'ri Instagram link yuboring (Reels yoki Post).")
         return
 
-    status_msg = await message.answer("⌛ Video yuklanmoqda...")
+    shortcode = match.group(1)
+    status_msg = await message.answer("⌛ Video tahlil qilinmoqda va yuklanmoqda...")
 
     try:
-        # Shortcode-ni aniqroq ajratib olish (Reels yoki Post uchun)
-        # Link: instagram.com/reels/C4n7Xy_shrt/ -> C4n7Xy_shrt
-        parts = url.rstrip('/').split('/')
-        shortcode = parts[-1] if '?' not in parts[-1] else parts[-1].split('?')[0]
-        
-        # Agar link oxiri / bilan tugamagan bo'lsa va oxirgi qismi shortcode bo'lsa:
-        if len(shortcode) < 3: # Xavfsizlik uchun tekshiruv
-             shortcode = parts[-2]
-
+        # Yuklash jarayonini async ichida bloklamasdan ishga tushirish
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(
-            None,
-            lambda: download_instagram(shortcode)
-        )
+        await loop.run_in_executor(None, download_instagram, shortcode)
 
         files_found = False
+        # Yuklangan fayllarni yuborish
         for file in os.listdir(DOWNLOAD_DIR):
             path = os.path.join(DOWNLOAD_DIR, file)
-
+            
             if file.endswith(".mp4"):
                 await message.answer_video(
                     FSInputFile(path),
-                    caption="✅ Reels tayyor!\n\n@my_codingbot"
+                    caption="✅ Video muvaffaqiyatli yuklandi!\n\n@my_codingbot"
                 )
                 files_found = True
-
-            elif file.endswith(".jpg"):
-                # Faqat post rasm bo'lsa yuboradi
-                await message.answer_photo(FSInputFile(path))
+            elif file.endswith(".jpg") and not files_found:
+                # Agar video bo'lmasa rasm yuborish (Postlar uchun)
+                await message.answer_photo(FSInputFile(path), caption="✅ Rasm yuklandi!")
                 files_found = True
 
-            # Faylni yuborgandan keyin o'chirish
+            # Faylni yuborgandan keyin o'chirish (Xotirani tozalash)
             if os.path.exists(path):
                 os.remove(path)
 
         if not files_found:
-            await message.answer("⚠️ Video topilmadi yoki yuklashda xatolik yub berdi.")
+            await message.answer("⚠️ Video topilmadi. Profil yopiq bo'lishi mumkin.")
 
     except Exception as e:
-        await message.answer("⚠️ Video yuklab bo'lmadi. Havola noto'g'ri yoki profil yopiq bo'lishi mumkin.")
-        print(f"Xatolik: {e}")
+        logging.error(f"Yuklashda xatolik: {e}")
+        await message.answer("⚠️ Xatolik yuz berdi. Linkni tekshiring yoki keyinroq urinib ko'ring.")
 
     finally:
-        try:
-            await status_msg.delete()
-        except:
-            pass
+        await status_msg.delete()
         await state.clear()
 
-def download_instagram(shortcode):
-    # Bu funksiya Reels va Postlarni birdek yuklaydi
-    post = instaloader.Post.from_shortcode(loader.context, shortcode)
-    loader.download_post(post, target=DOWNLOAD_DIR)
+# --- ADMIN PANEL FUNKSIYALARI ---
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
@@ -179,12 +183,12 @@ async def yubor(message: types.Message, state: FSMContext):
             count += 1
         except:
             continue
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=user_button())
     await state.clear()
 
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("❌ Bekor qilindi.", reply_markup=user_button())
     await state.clear()
 
 async def main():
@@ -192,4 +196,7 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        logging.info("Bot to'xtatildi")
