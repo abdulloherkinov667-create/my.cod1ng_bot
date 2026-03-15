@@ -18,7 +18,7 @@ from buttons.inline import xabar_yubor
 from stets import SendImg
 
 # ----------------- Sozlamalar -----------------
-API_TOKEN = "SIZNING_REAL_BOT_TOKEN"  # BotFather token
+API_TOKEN = "8301002449:AAETmzKpcyiwraQlZo3DvvIo7cHKs5DcoNk"  # BotFather token
 ADMIN_ID = [6411347321]
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
