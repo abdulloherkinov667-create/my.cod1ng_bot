@@ -22,7 +22,7 @@ PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
 ADMIN_ID = [6411347321]
-API_TOKEN = "8301002449:AAG3nbgVKIBxav_HAXVPVhGFFw0bBZE34-c"
+API_TOKEN = "8301002449:AAETmzKpcyiwraQlZo3DvvIo7cHKs5DcoNk"
 
 DOWNLOAD_DIR = "downloads"
 if not os.path.exists(DOWNLOAD_DIR):
