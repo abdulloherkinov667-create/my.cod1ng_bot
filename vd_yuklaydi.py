@@ -36,10 +36,10 @@ dp = Dispatcher()
 L = instaloader.Instaloader(
     dirname_pattern=os.path.join(DOWNLOAD_DIR, "{target}"),
     download_videos=True,
-    download_video_thumbnails=False,
-    download_comments=False,
-    save_metadata=False,
-    compress_json=False
+    download_video_thumbnails=True,
+    download_comments=True,
+    save_metadata=True,
+    compress_json=True
 )
 
 class VideoState(StatesGroup):

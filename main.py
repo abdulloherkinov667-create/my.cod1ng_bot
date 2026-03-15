@@ -12,12 +12,17 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.session.aiohttp import AiohttpSession
 
-# Tugmalar va bazalar (Sizning fayllaringizdan olingan deb hisoblaymiz)
-from buttons.defould import user_button, send_confirmation_buttons
-from create import insert_user, users_table, create_user_pdf, get_all_users
-from buttons.inline import xabar_yubor
-from stets import SendImg
+# Sizning fayllaringizdan importlar
+try:
+    from buttons.defould import user_button, send_confirmation_buttons
+    from create import insert_user, users_table, create_user_pdf, get_all_users
+    from buttons.inline import xabar_yubor
+    from stets import SendImg
+except ImportError:
+    logging.warning("Ba'zi modullar topilmadi. Loyiha papkalari to'g'riligini tekshiring.")
 
+# SOZLAMALAR
+# Agar serveringizda proxy kerak bo'lmasa, session qismini olib tashlashingiz mumkin
 PROXY_URL = 'http://proxy.server:3128'
 session = AiohttpSession(proxy=PROXY_URL)
 
@@ -33,7 +38,7 @@ dp = Dispatcher()
 
 # Instaloader sozlamalari
 loader = instaloader.Instaloader(
-    dirname_pattern=os.path.join(DOWNLOAD_DIR, "{target}"), # Har bir yuklash uchun alohida papka
+    dirname_pattern=os.path.join(DOWNLOAD_DIR, "{target}"),
     download_videos=True,
     download_video_thumbnails=False,
     download_comments=False,
@@ -44,6 +49,7 @@ loader = instaloader.Instaloader(
 class VideoState(StatesGroup):
     waiting_for_link = State()
 
+# --- START BUYRUG'I ---
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
     await users_table()
@@ -60,23 +66,24 @@ async def start_command(message: types.Message):
         text = f"👑 <b>Admin panelga xush kelibsiz!</b>\n\nSalom, <b>{message.from_user.first_name}</b>."
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
-        text = "👋 <b>Botga xush kelibsiz!</b>\n\n📥 Video yuklash uchun /vd_yuklash_boshlash buyrug'ini bosing."
+        text = "👋 <b>Botga xush kelibsiz!</b>\n\n📥 Video yuklash uchun Instagram linkini yuboring yoki /vd_yuklash_boshlash buyrug'ini bosing."
         await message.answer(text, parse_mode="HTML")
+
+# --- VIDEO YUKLASH QISMI (MOSLASHTIRILGAN) ---
 
 @dp.message(F.text == "/vd_yuklash_boshlash")
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
     await message.answer("📥 Instagram video (Reels/Post) linkini yuboring:")
 
-@dp.message(VideoState.waiting_for_link)
-async def vd_yuklash(message: types.Message, state: FSMContext):
+@dp.message(F.text.contains("instagram.com"))
+async def handle_instagram_link(message: types.Message, state: FSMContext = None):
     url = message.text
-    
-    # Instagram linkini tekshirish (p/ yoki reels/ yoki tv/)
+    # Linkdan shortcode ajratib olish (p/reel/tv/ uchun)
     match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
     
     if not match:
-        await message.answer("❌ Iltimos, to'g'ri Instagram video linkini yuboring.")
+        await message.answer("❌ Iltimos, faqat ommaviy (Public) Instagram posti linkini yuboring.")
         return
 
     wait_msg = await message.answer("⏳ Video tahlil qilinmoqda va yuklanmoqda, iltimos kuting...")
@@ -84,38 +91,51 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
     target_dir = os.path.join(DOWNLOAD_DIR, shortcode)
 
     try:
-        # Postni yuklab olish
+        # Instaloader orqali yuklash
         post = instaloader.Post.from_shortcode(loader.context, shortcode)
         loader.download_post(post, target=shortcode)
         
-        video_sent = False
-        # Yuklangan papka ichidan .mp4 faylni qidirish
+        media_sent = False
         if os.path.exists(target_dir):
-            for fil in os.listdir(target_dir):
+            for fil in sorted(os.listdir(target_dir)):
+                file_path = os.path.join(target_dir, fil)
+                # Video bo'lsa
                 if fil.endswith(".mp4"):
-                    video_path = os.path.join(target_dir, fil)
                     await message.answer_video(
-                        FSInputFile(video_path), 
-                        caption="📹 Video muvaffaqiyatli yuklandi!\n\n🤖 Bot: @my_cod1ngbot"
+                        FSInputFile(file_path), 
+                        caption="📹 Video muvaffaqiyatli yuklandi!\n\n🤖 @my_cod1ngbot"
                     )
-                    video_sent = True
+                    media_sent = True
+                    break
+                # Rasm bo'lsa
+                elif fil.endswith((".jpg", ".png", ".webp")):
+                    await message.answer_photo(
+                        FSInputFile(file_path), 
+                        caption="🖼 Rasm muvaffaqiyatli yuklandi!\n\n🤖 @my_cod1ngbot"
+                    )
+                    media_sent = True
                     break
         
-        if not video_sent:
-            await message.answer("⚠️ Kechirasiz, bu postda video topilmadi.")
+        if not media_sent:
+            await message.answer("⚠️ Kechirasiz, media topilmadi yoki profil shaxsiy (Private).")
 
     except Exception as e:
         logging.error(f"Xatolik: {e}")
-        await message.answer("⚠️ Xatolik yuz berdi! Video yuklab bo'lmadi. Profil yopiq bo'lishi yoki link xato bo'lishi mumkin.")
+        await message.answer("⚠️ Xatolik yuz berdi! Linkni tekshiring yoki profil ochiqligiga ishonch hosil qiling.")
     
     finally:
-        # Tozalash: Yuklangan papkani o'chirish
+        # Vaqtinchalik fayllarni o'chirish
         if os.path.exists(target_dir):
             shutil.rmtree(target_dir)
-        await wait_msg.delete()
-        await state.clear()
+        try:
+            await wait_msg.delete()
+        except:
+            pass
+        if state:
+            await state.clear()
 
-# --- ADMIN VA BOSHQA FUNKSIYALAR (O'ZGARISHSIZ QOLDI) ---
+# --- ADMIN FUNKSIYALARI (O'ZGARISHSIZ) ---
+
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
@@ -124,7 +144,8 @@ async def show_users(message: types.Message):
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
-    await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
+    if message.from_user.id in ADMIN_ID:
+        await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
@@ -157,15 +178,13 @@ async def yubor(message: types.Message, state: FSMContext):
             count += 1
         except:
             continue
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=user_button())
     await state.clear()
 
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("❌ Bekor qilindi.", reply_markup=user_button())
     await state.clear()
-    
-    
 
 async def main():
     logging.basicConfig(level=logging.INFO)
