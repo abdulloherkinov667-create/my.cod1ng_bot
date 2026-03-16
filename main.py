@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import os
-import instaloader
 import re
 import shutil
+
+import instaloader
+from yt_dlp import YoutubeDL
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
@@ -33,7 +35,7 @@ dp = Dispatcher()
 
 # Instaloader sozlamalari
 loader = instaloader.Instaloader(
-    dirname_pattern=os.path.join(DOWNLOAD_DIR, "{target}"), # Har bir yuklash uchun alohida papka
+    dirname_pattern=os.path.join(DOWNLOAD_DIR, "{target}"),
     download_videos=True,
     download_video_thumbnails=False,
     download_comments=False,
@@ -70,11 +72,12 @@ async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
 
 @dp.message(VideoState.waiting_for_link)
 async def vd_yuklash(message: types.Message, state: FSMContext):
-    url = message.text
-    
-    # Instagram linkini tekshirish (p/ yoki reels/ yoki tv/)
-    match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
-    
+    url = message.text.strip()
+
+    # Instagram linkini tozalash va tekshirish (p/ yoki reels/ yoki tv/)
+    url = url.split("?")[0].rstrip("/")
+    match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", url)
+
     if not match:
         await message.answer("❌ Iltimos, to'g'ri Instagram video linkini yuboring.")
         return
@@ -84,15 +87,29 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
     target_dir = os.path.join(DOWNLOAD_DIR, shortcode)
 
     try:
-        # Postni yuklab olish
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-        loader.download_post(post, target=shortcode)
-        
+        # Yuklash uchun papka yaratish
+        os.makedirs(target_dir, exist_ok=True)
+
+        # Instagram videolarini yuklash uchun yt-dlp ishlatish (ko'proq barqaror)
+        ydl_opts = {
+            "outtmpl": os.path.join(target_dir, "%(id)s.%(ext)s"),
+            "format": "bestvideo+bestaudio/best",
+            "merge_output_format": "mp4",
+            "quiet": True,
+            "no_warnings": True,
+            "noprogress": True,
+            "restrictfilenames": True,
+            "ignoreerrors": True,
+            "overwrites": True,
+        }
+        with YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
         video_sent = False
         # Yuklangan papka ichidan .mp4 faylni qidirish
         if os.path.exists(target_dir):
             for fil in os.listdir(target_dir):
-                if fil.endswith(".mp4"):
+                if fil.lower().endswith(".mp4"):
                     video_path = os.path.join(target_dir, fil)
                     await message.answer_video(
                         FSInputFile(video_path), 
@@ -100,14 +117,16 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
                     )
                     video_sent = True
                     break
-        
+
         if not video_sent:
-            await message.answer("⚠️ Kechirasiz, bu postda video topilmadi.")
+            await message.answer("⚠️ Kechirasiz, bu postda video topilmadi yoki yuklashda muammo bo'ldi.")
 
     except Exception as e:
-        logging.error(f"Xatolik: {e}")
-        await message.answer("⚠️ Xatolik yuz berdi! Video yuklab bo'lmadi. Profil yopiq bo'lishi yoki link xato bo'lishi mumkin.")
-    
+        logging.exception("Instagram videoni yuklashda xatolik: %s", e)
+        await message.answer(
+            "⚠️ Xatolik yuz berdi! Video yuklab bo'lmadi. Profil yopiq bo'lishi yoki link xato bo'lishi mumkin."
+        )
+
     finally:
         # Tozalash: Yuklangan papkani o'chirish
         if os.path.exists(target_dir):
