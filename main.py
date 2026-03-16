@@ -8,23 +8,25 @@ import instaloader
 from yt_dlp import YoutubeDL
 
 from aiogram import Bot, Dispatcher, types, F
+from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.session.aiohttp import AiohttpSession
 
-# Tugmalar va bazalar (Sizning fayllaringizdan olingan deb hisoblaymiz)
 from buttons.defould import user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
-PROXY_URL = 'http://proxy.server:3128'
-session = AiohttpSession(proxy=PROXY_URL)
+
+API_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("BOT_TOKEN") or "8301002449:AAETmzKpcyiwraQlZo3DvvIo7cHKs5DcoNk"
+
+PROXY_URL = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY") or None
+session = AiohttpSession(proxy=PROXY_URL) if PROXY_URL else AiohttpSession()
 
 ADMIN_ID = [6411347321]
-API_TOKEN = "8301002449:AAETmzKpcyiwraQlZo3DvvIo7cHKs5DcoNk"
 
 DOWNLOAD_DIR = "downloads"
 if not os.path.exists(DOWNLOAD_DIR):
