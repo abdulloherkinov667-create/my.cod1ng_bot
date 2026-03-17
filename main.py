@@ -42,7 +42,7 @@ from stets import SendImg
 
 
 
-API_TOKEN = "8301002449:AAHqAjC_iiugU8IVElzR-qXGbIROQA_Ks80"
+API_TOKEN = "8301002449:AAEhsmWUDYSMk-3o13z6-mwyOmz13-0avwI"
 if not API_TOKEN:
     raise SystemExit(
         "Bot token topilmadi. Iltimos TELEGRAM_TOKEN muhit o'zgaruvchisiga tokenni qo'ying."
@@ -109,7 +109,18 @@ async def start_command(message: types.Message):
 @dp.message(F.text == "🎬 Video yuklash")
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
-    await message.answer("📥 Iltimos, Instagram video (Reels/Post) havolasini yuboring:")
+    await message.answer("""
+    🎬 <b>Video yuklash bo‘limiga xush kelibsiz!</b>
+
+📥 Kerakli videoni olish uchun havolani yuboring.
+
+🚫 Videolar hech qanday watermark (Instagram belgisi)siz yuklab beriladi.  
+🚫 Hech qanday reklamalarsiz, toza holatda taqdim etiladi.
+
+⚡ Tezkor va qulay yuklab olish xizmati siz uchun!
+
+🔗 Endi instagram havolani yuboring 👇
+                         """)
 
 
 @dp.message(VideoState.waiting_for_link)
@@ -200,9 +211,18 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
             await message.answer_video(
                 FSInputFile(video_path),
                 caption=(
-                    "📹 Video muvaffaqiyatli yuklandi!\n\n"
-                    "🎞️ Endi uni saqlab olishingiz yoki qayta ko‘rishingiz mumkin.\n\n"
-                    "🤖 Bot: @my_cod1ngbot"
+                    """
+                    ✅ <b>Video muvaffaqiyatli yuklandi!</b>
+
+🎬 Video tayyor — endi uni bemalol saqlab olishingiz yoki qayta ko‘rishingiz mumkin.
+
+🚫 Hech qanday watermarksiz  
+🚫 Reklamalarsiz, toza holatda
+
+⚡ Siz uchun tezkor va qulay xizmat!
+
+🤖 Bot: @my_cod1ngbot
+                    """
                 ),
             )
             video_sent = True
