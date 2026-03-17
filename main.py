@@ -1,19 +1,39 @@
-import asyncio
+﻿import asyncio
 import logging
 import os
 import re
 import shutil
 
-import instaloader
 from yt_dlp import YoutubeDL
-
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.session.aiohttp import AiohttpSession
+from buttons import start_button
+
+# ---------- Helper ----------
+
+class YTDLPLogger:
+    def __init__(self):
+        self.last_error = None
+        self.lines = []
+
+    def debug(self, msg: str):
+        self.lines.append(msg)
+
+    def warning(self, msg: str):
+        self.lines.append(msg)
+
+    def error(self, msg: str):
+        self.last_error = msg
+        self.lines.append(msg)
+
+
+def _has_ffmpeg() -> bool:
+    return shutil.which("ffmpeg") is not None
+
 
 from buttons.defould import user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users
@@ -21,32 +41,33 @@ from buttons.inline import xabar_yubor
 from stets import SendImg
 
 
-API_TOKEN = os.getenv("TELEGRAM_TOKEN") or os.getenv("BOT_TOKEN") or "8301002449:AAETmzKpcyiwraQlZo3DvvIo7cHKs5DcoNk"
 
-PROXY_URL = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY") or None
-session = AiohttpSession(proxy=PROXY_URL) if PROXY_URL else AiohttpSession()
+API_TOKEN = "8301002449:AAHqAjC_iiugU8IVElzR-qXGbIROQA_Ks80"
+if not API_TOKEN:
+    raise SystemExit(
+        "Bot token topilmadi. Iltimos TELEGRAM_TOKEN muhit o'zgaruvchisiga tokenni qo'ying."
+    )
 
-ADMIN_ID = [6411347321]
+PROXY_URL = None
 
-DOWNLOAD_DIR = "downloads"
-if not os.path.exists(DOWNLOAD_DIR):
-    os.makedirs(DOWNLOAD_DIR)
+try:
+    session = AiohttpSession(proxy=PROXY_URL) if PROXY_URL else AiohttpSession()
+except Exception:
+    session = AiohttpSession()
 
 bot = Bot(token=API_TOKEN, session=session)
 dp = Dispatcher()
 
-# Instaloader sozlamalari
-loader = instaloader.Instaloader(
-    dirname_pattern=os.path.join(DOWNLOAD_DIR, "{target}"),
-    download_videos=True,
-    download_video_thumbnails=False,
-    download_comments=False,
-    save_metadata=False,
-    compress_json=False
-)
+ADMIN_ID = [6411347321]
+DOWNLOAD_DIR = "downloads"
+if not os.path.exists(DOWNLOAD_DIR):
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+
+# ---------- Video yuklash ----------
 class VideoState(StatesGroup):
     waiting_for_link = State()
+
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -57,84 +78,145 @@ async def start_command(message: types.Message):
         language_code=message.from_user.language_code,
         is_bot=message.from_user.is_bot,
         chat_id=message.chat.id,
-        created_at=message.date
+        created_at=message.date,
     )
 
     if message.from_user.id in ADMIN_ID:
-        text = f"👑 <b>Admin panelga xush kelibsiz!</b>\n\nSalom, <b>{message.from_user.first_name}</b>."
+        text = (
+            f"👑 <b>Admin paneliga xush kelibsiz!</b>\n\n"
+            f"Salom, <b>{message.from_user.first_name}</b>.\n\n"
+            "🧰 Paneldan kerakli bo'limni tanlang."
+        )
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
-        text = "👋 <b>Botga xush kelibsiz!</b>\n\n📥 Video yuklash uchun /vd_yuklash_boshlash buyrug'ini bosing."
-        await message.answer(text, parse_mode="HTML")
+        text = (
+            "👋 <b>Botga xush kelibsiz!</b>\n\n"
+            "📥 Instagram videoni yuklash uchun /vd_yuklash_boshlash buyrug'ini bosing."
+        )
+        await message.answer(text, parse_mode="HTML", reply_markup=start_button())
+
+
+
+
 
 @dp.message(F.text == "/vd_yuklash_boshlash")
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
-    await message.answer("📥 Instagram video (Reels/Post) linkini yuboring:")
+    await message.answer("📥 Iltimos, Instagram video (Reels/Post) havolasini yuboring:")
+
 
 @dp.message(VideoState.waiting_for_link)
 async def vd_yuklash(message: types.Message, state: FSMContext):
-    url = message.text.strip()
-
-    # Instagram linkini tozalash va tekshirish (p/ yoki reels/ yoki tv/)
-    url = url.split("?")[0].rstrip("/")
-    match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([A-Za-z0-9_-]+)", url)
-
+    url = message.text
+    match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
     if not match:
-        await message.answer("❌ Iltimos, to'g'ri Instagram video linkini yuboring.")
+        await message.answer("❌ Noto‘g‘ri havola. Iltimos, Instagram video (Reels/Post) linkini yuboring.")
         return
 
-    wait_msg = await message.answer("⏳ Video tahlil qilinmoqda va yuklanmoqda, iltimos kuting...")
+    wait_msg = await message.answer("⏳ Yuklanmoqda... Iltimos, biroz sabr qiling.")
     shortcode = match.group(1)
     target_dir = os.path.join(DOWNLOAD_DIR, shortcode)
+    os.makedirs(target_dir, exist_ok=True)
+
+    loop = asyncio.get_running_loop()
+    last_progress = {"percent": 0}
+
+
+    async def _edit_status(text: str):
+        try:
+            await wait_msg.edit_text(text)
+        except Exception:
+            pass
+
+    def _progress_hook(d):
+        status = d.get("status")
+        if status == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate")
+            downloaded = d.get("downloaded_bytes", 0)
+            if total:
+                percent = int(downloaded / total * 100)
+            else:
+                percent = None
+
+            if percent is not None:
+                if percent - last_progress["percent"] < 3:
+                    return
+                last_progress["percent"] = percent
+                text = f"⏳ Yuklanmoqda: {percent}% ({downloaded/1024/1024:.1f}/{total/1024/1024:.1f} MB)"
+            else:
+                text = f"⏳ Yuklanmoqda: {downloaded/1024/1024:.1f} MB ..."
+                
+            loop.call_soon_threadsafe(lambda: loop.create_task(_edit_status(text)))
+
+        elif status == "finished":
+            loop.call_soon_threadsafe(
+                lambda: loop.create_task(_edit_status("✅ Yuklandi, tayyorlanmoqda..."))
+            )
+
+    logger = YTDLPLogger()
+
+    ydl_opts = {
+        "outtmpl": os.path.join(target_dir, "%(id)s.%(ext)s"),
+        "format": "bestvideo+bestaudio/best" if _has_ffmpeg() else "best",
+        "progress_hooks": [_progress_hook],
+        "logger": logger,
+        "quiet": True,
+        "no_warnings": True,
+        "restrictfilenames": True,
+        "noplaylist": True,
+        "overwrites": True,
+    }
+
+
+    video_sent = False
+    ydl_logger = YTDLPLogger()
 
     try:
-        # Yuklash uchun papka yaratish
-        os.makedirs(target_dir, exist_ok=True)
+        def _download() -> str:
+            with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
+                info = ydl.extract_info(url, download=True)
+                return ydl.prepare_filename(info)
 
-        # Instagram videolarini yuklash uchun yt-dlp ishlatish (ko'proq barqaror)
-        ydl_opts = {
-            "outtmpl": os.path.join(target_dir, "%(id)s.%(ext)s"),
-            "format": "bestvideo+bestaudio/best",
-            "merge_output_format": "mp4",
-            "quiet": True,
-            "no_warnings": True,
-            "noprogress": True,
-            "restrictfilenames": True,
-            "ignoreerrors": True,
-            "overwrites": True,
-        }
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        downloaded_file = await asyncio.to_thread(_download)
+        video_path = downloaded_file if downloaded_file and os.path.exists(downloaded_file) else None
 
-        video_sent = False
-        # Yuklangan papka ichidan .mp4 faylni qidirish
-        if os.path.exists(target_dir):
+        # fallback: look for any downloaded mp4 in the target folder
+        if not video_path and os.path.exists(target_dir):
             for fil in os.listdir(target_dir):
                 if fil.lower().endswith(".mp4"):
-                    video_path = os.path.join(target_dir, fil)
-                    await message.answer_video(
-                        FSInputFile(video_path), 
-                        caption="📹 Video muvaffaqiyatli yuklandi!\n\n🤖 Bot: @my_cod1ngbot"
-                    )
-                    video_sent = True
-                    break
+                    candidate = os.path.join(target_dir, fil)
+                    if os.path.getsize(candidate) > 0:
+                        video_path = candidate
+                        break
 
-        if not video_sent:
-            await message.answer("⚠️ Kechirasiz, bu postda video topilmadi yoki yuklashda muammo bo'ldi.")
+        if video_path:
+            await message.answer_video(
+                FSInputFile(video_path),
+                caption=(
+                    "📹 Video muvaffaqiyatli yuklandi!\n\n"
+                    "🎞️ Endi uni saqlab olishingiz yoki qayta ko‘rishingiz mumkin.\n\n"
+                    "🤖 Bot: @my_cod1ngbot"
+                ),
+            )
+            video_sent = True
+        else:
+            raise RuntimeError("Yuklangan video topilmadi")
 
     except Exception as e:
         logging.exception("Instagram videoni yuklashda xatolik: %s", e)
+
+        info_text = ydl_logger.last_error or "Noma'lum xatolik yuz berdi."
+
         await message.answer(
-            "⚠️ Xatolik yuz berdi! Video yuklab bo'lmadi. Profil yopiq bo'lishi yoki link xato bo'lishi mumkin."
+            "⚠️ Yuklashda muammo yuz berdi. Iltimos, linkni tekshirib qayta urinib ko‘ring."
         )
 
     finally:
-        # Tozalash: Yuklangan papkani o'chirish
         if os.path.exists(target_dir):
             shutil.rmtree(target_dir)
         await wait_msg.delete()
         await state.clear()
+
 
 # --- ADMIN VA BOSHQA FUNKSIYALAR (O'ZGARISHSIZ QOLDI) ---
 @dp.message(F.text == "Userlarni PDF korsh 👥")
@@ -143,9 +225,11 @@ async def show_users(message: types.Message):
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="📄 Foydalanuvchilar ro'yxati")
 
+
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
     await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
+
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
@@ -153,11 +237,13 @@ async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
     await state.set_state(SendImg.image)
     await callback.answer()
 
+
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await message.answer("✏️ Rasm uchun matn kiriting")
     await state.set_state(SendImg.about)
+
 
 @dp.message(SendImg.about)
 async def caption_qabul(message: types.Message, state: FSMContext):
@@ -166,6 +252,7 @@ async def caption_qabul(message: types.Message, state: FSMContext):
     await message.answer_photo(photo=data["photo"], caption=data["about"], parse_mode="HTML")
     await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
     await state.set_state(SendImg.confirm)
+
 
 @dp.message(SendImg.confirm, F.text == "Xa ✅")
 async def yubor(message: types.Message, state: FSMContext):
@@ -181,16 +268,23 @@ async def yubor(message: types.Message, state: FSMContext):
     await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
 
+
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
     await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
-    
-    
+
 
 async def main():
     logging.basicConfig(level=logging.INFO)
+
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception:
+        pass
+
     await dp.start_polling(bot)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
