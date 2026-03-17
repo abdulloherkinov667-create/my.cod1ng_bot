@@ -250,17 +250,52 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         pdf_file = create_user_pdf()
-        await message.answer_document(FSInputFile(pdf_file), caption="📄 Foydalanuvchilar ro'yxati")
+        await message.answer_document(FSInputFile(pdf_file), caption="""
+                                      🛠 <b>Admin panel • Foydalanuvchilar</b>
+
+👥 <b>Foydalanuvchilar ro‘yxatini boshqarish</b>
+
+📄 Ushbu bo‘lim orqali botdan foydalangan barcha foydalanuvchilar haqida ma’lumotlarni PDF formatda olishingiz mumkin.
+
+📊 Tizim foydalanuvchilarni yig‘ib, tartiblangan holda fayl ko‘rinishida taqdim etadi.
+
+⚡ Tezkor • Qulay • Tartibli
+
+📥 PDF faylni olish uchun amalni davom ettiring.
+                                      """)
 
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
-    await message.answer("📨 Xabar turini tanlang:", reply_markup=xabar_yubor())
+    await message.answer("""
+                         📢 <b>Xabar yuborish bo‘limi</b>
+
+✉️ Foydalanuvchilarga yuboriladigan xabar turini tanlang.
+
+📝 Siz quyidagi formatlardan birini tanlashingiz mumkin:
+• Matn (text)
+• Rasm (photo)
+• Video
+
+⚙️ Tanlagan turga qarab keyingi bosqichlar ko‘rsatib beriladi.
+
+👇 Davom etish uchun xabar turini tanlang.
+                         """, reply_markup=xabar_yubor())
 
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("🖼 Rasmni yuklang.")
+    await callback.message.answer("""
+                                  🖼 <b>Rasm yuborish</b>
+
+📸 Iltimos, foydalanuvchilarga yubormoqchi bo‘lgan rasmingizni yuboring.
+
+✏️ Rasm bilan birga izoh (caption) ham qo‘shishingiz mumkin.
+
+⚡ Yuborilgan rasm barcha tanlangan foydalanuvchilarga yetkaziladi.
+
+👇 Endi rasmni yuboring.
+                                  """)
     await state.set_state(SendImg.image)
     await callback.answer()
 
@@ -268,7 +303,17 @@ async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("✏️ Rasm uchun matn kiriting")
+    await message.answer("""
+                         ✏️ <b>Rasm uchun izoh qo‘shish</b>
+
+📝 Endi yuborilgan rasm uchun matn (caption) kiriting.
+
+💬 Ushbu izoh rasm bilan birga foydalanuvchilarga yuboriladi.
+
+⚙️ Qisqa va tushunarli yozishingiz tavsiya etiladi.
+
+👇 Endi izohni kiriting.
+                         """)
     await state.set_state(SendImg.about)
 
 
