@@ -41,7 +41,7 @@ from stets import SendImg
 
 
 
-API_TOKEN = "8301002449:AAEhsmWUDYSMk-3o13z6-mwyOmz13-0avwI"
+API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 
 PROXY_URL = None
 
