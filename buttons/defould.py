@@ -15,13 +15,6 @@ def start_button():
         ],
         resize_keyboard=True
     )
-# def start_button():
-#     return ReplyKeyboardMarkup(
-#         keyboard=[
-#             [KeyboardButton(text="Bosish")]
-#         ],
-#         resize_keyboard=True
-#     )
     
     
 def user_button():

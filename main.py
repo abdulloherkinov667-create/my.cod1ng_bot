@@ -11,7 +11,7 @@ from aiogram.types import FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.session.aiohttp import AiohttpSession
-from buttons import start_button
+from buttons.defould import start_button
 
 # ---------- Helper ----------
 
@@ -90,8 +90,15 @@ async def start_command(message: types.Message):
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
         text = (
-            "👋 <b>Botga xush kelibsiz!</b>\n\n"
-            "📥 Instagram videoni yuklash uchun /vd_yuklash_boshlash buyrug'ini bosing."
+            """
+            👋 <b>Botga xush kelibsiz!</b>
+
+😊 Botdan foydalanishni boshlash uchun pastda joylashgan tugmalardan birini tanlang.
+
+👇 Davom etish uchun pastdagi tugmani bosing.
+
+✨ Shundan so‘ng sizga keyingi qadamlar ko‘rsatib beriladi.
+            """
         )
         await message.answer(text, parse_mode="HTML", reply_markup=start_button())
 
@@ -99,7 +106,7 @@ async def start_command(message: types.Message):
 
 
 
-@dp.message(F.text == "/vd_yuklash_boshlash")
+@dp.message(F.text == "🎬 Video yuklash")
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
     await message.answer("📥 Iltimos, Instagram video (Reels/Post) havolasini yuboring:")
