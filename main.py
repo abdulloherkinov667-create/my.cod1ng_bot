@@ -14,7 +14,6 @@ from aiogram.client.session.aiohttp import AiohttpSession
 from buttons.defould import start_button
 
 # ---------- Helper ----------
-
 class YTDLPLogger:
     def __init__(self):
         self.last_error = None
@@ -43,10 +42,6 @@ from stets import SendImg
 
 
 API_TOKEN = "8301002449:AAEhsmWUDYSMk-3o13z6-mwyOmz13-0avwI"
-if not API_TOKEN:
-    raise SystemExit(
-        "Bot token topilmadi. Iltimos TELEGRAM_TOKEN muhit o'zgaruvchisiga tokenni qo'ying."
-    )
 
 PROXY_URL = None
 
@@ -91,7 +86,7 @@ async def start_command(message: types.Message):
     else:
         text = (
             """
-            👋 <b>Botga xush kelibsiz!</b>
+            👋 Botga xush kelibsiz!
 
 😊 Botdan foydalanishni boshlash uchun pastda joylashgan tugmalardan birini tanlang.
 
@@ -110,7 +105,7 @@ async def start_command(message: types.Message):
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
     await message.answer("""
-    🎬 <b>Video yuklash bo‘limiga xush kelibsiz!</b>
+    🎬 Video yuklash bo‘limiga xush kelibsiz!
 
 📥 Kerakli videoni olish uchun havolani yuboring.
 
@@ -185,7 +180,6 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
         "overwrites": True,
     }
 
-
     video_sent = False
     ydl_logger = YTDLPLogger()
 
@@ -244,16 +238,14 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
         await wait_msg.delete()
         await state.clear()
 
-
-# --- ADMIN VA BOSHQA FUNKSIYALAR (O'ZGARISHSIZ QOLDI) ---
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="""
-                                      🛠 <b>Admin panel • Foydalanuvchilar</b>
+                                      🛠 Admin panel • Foydalanuvchilar
 
-👥 <b>Foydalanuvchilar ro‘yxatini boshqarish</b>
+👥 Foydalanuvchilar ro‘yxatini boshqarish
 
 📄 Ushbu bo‘lim orqali botdan foydalangan barcha foydalanuvchilar haqida ma’lumotlarni PDF formatda olishingiz mumkin.
 
@@ -268,11 +260,12 @@ async def show_users(message: types.Message):
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
     await message.answer("""
-                         📢 <b>Xabar yuborish bo‘limi</b>
+                         📢 Xabar yuborish bo‘limi
 
 ✉️ Foydalanuvchilarga yuboriladigan xabar turini tanlang.
 
 📝 Siz quyidagi formatlardan birini tanlashingiz mumkin:
+
 • Matn (text)
 • Rasm (photo)
 • Video
@@ -286,7 +279,7 @@ async def xabar_yuborish_boshlash(message: types.Message):
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("""
-                                  🖼 <b>Rasm yuborish</b>
+                                  🖼 Rasm yuborish
 
 📸 Iltimos, foydalanuvchilarga yubormoqchi bo‘lgan rasmingizni yuboring.
 
@@ -304,15 +297,9 @@ async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await message.answer("""
-                         ✏️ <b>Rasm uchun izoh qo‘shish</b>
+                         ✏️ Rasm uchun izoh qo‘shish
 
 📝 Endi yuborilgan rasm uchun matn (caption) kiriting.
-
-💬 Ushbu izoh rasm bilan birga foydalanuvchilarga yuboriladi.
-
-⚙️ Qisqa va tushunarli yozishingiz tavsiya etiladi.
-
-👇 Endi izohni kiriting.
                          """)
     await state.set_state(SendImg.about)
 
