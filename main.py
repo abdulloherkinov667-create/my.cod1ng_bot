@@ -243,17 +243,7 @@ async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="""
-                                      🛠 Admin panel • Foydalanuvchilar
-
-👥 Foydalanuvchilar ro‘yxatini boshqarish
-
-📄 Ushbu bo‘lim orqali botdan foydalangan barcha foydalanuvchilar haqida ma’lumotlarni PDF formatda olishingiz mumkin.
-
-📊 Tizim foydalanuvchilarni yig‘ib, tartiblangan holda fayl ko‘rinishida taqdim etadi.
-
-⚡ Tezkor • Qulay • Tartibli
-
-📥 PDF faylni olish uchun amalni davom ettiring.
+👥 Foydalanuvchilar ro‘yxatini
                                       """)
 
 
