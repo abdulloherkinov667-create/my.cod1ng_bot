@@ -25,7 +25,8 @@ def user_button():
                 KeyboardButton(text="Userlarni soni 👥")
             ],
             [
-                KeyboardButton(text="Xabar yuborish 📨")
+                KeyboardButton(text="Xabar yuborish 📨"),
+                KeyboardButton(text="🎬 Video yuklash")
             ]
         ],
         resize_keyboard=True
