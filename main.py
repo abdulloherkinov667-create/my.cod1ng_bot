@@ -206,7 +206,7 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
                 FSInputFile(video_path),
                 caption=(
                     """
-                    ✅ <b>Video muvaffaqiyatli yuklandi!</b>
+                    ✅ Video muvaffaqiyatli yuklandi!
 
 🎬 Video tayyor — endi uni bemalol saqlab olishingiz yoki qayta ko‘rishingiz mumkin.
 
