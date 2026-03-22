@@ -35,7 +35,7 @@ def _has_ffmpeg() -> bool:
 
 
 from buttons.defould import user_button, send_confirmation_buttons
-from create import insert_user, users_table, create_user_pdf, get_all_users
+from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
@@ -241,6 +241,7 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
+        await check_blocked_users(bot)
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="""
 👥 Foydalanuvchilar ro‘yxatini

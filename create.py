@@ -5,6 +5,8 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
 from reportlab.lib import colors
+from aiogram import Bot
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 
 
@@ -25,6 +27,7 @@ async def users_table():
                 created_at DATETIME
             )
         """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_id ON users(chat_id)")
         await db.commit()
 
 
@@ -54,12 +57,34 @@ def get_all_users():
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT id, first_name, username, chat_id, created_at
+        SELECT id, first_name, username, chat_id, created_at, is_blocked
         FROM users
     """)
     users = cursor.fetchall()
     conn.close()
     return users
+
+
+#------------------------ BLOKED USERLARNI TEKSHIRISH -----------------------
+async def check_blocked_users(bot):
+    users = get_all_users()
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    for user in users:
+        chat_id = user[3]
+        try:
+            # Test message yuborish
+            await bot.send_chat_action(chat_id=chat_id, action="typing")
+            # Agar muvaffaqiyatli bo'lsa, bloklanmagan
+            cursor.execute("UPDATE users SET is_blocked = 0 WHERE chat_id = ?", (chat_id,))
+        except (TelegramBadRequest, TelegramForbiddenError):
+            # Bloklangan
+            cursor.execute("UPDATE users SET is_blocked = 1 WHERE chat_id = ?", (chat_id,))
+        except Exception:
+            # Boshqa xato, ehtimol bloklangan
+            cursor.execute("UPDATE users SET is_blocked = 1 WHERE chat_id = ?", (chat_id,))
+    conn.commit()
+    conn.close()
         
         
 #------------------------ USERLARNI PDF GA O'TKAZISH -----------------------      
@@ -79,27 +104,29 @@ def create_user_pdf():
 
     # Jadval sarlavhalari
     data = [
-        ["ID", "Ismi", "Username", "Chat ID", "Royxtdn otgn vqt"]
+        ["ID", "Ismi", "Username", "Chat ID", "Royxtdn otgn vqt", "Bloklangan"]
     ]
 
     # Userlarni qo‘shish
     for user in users:
+        blocked_status = "Ha" if user[5] else "Yo'q"
         data.append([
             str(user[0]),
             user[1],
             f"@{user[2]}" if user[2] else "-",
             str(user[3]),
-            str(user[4])
+            str(user[4]),
+            blocked_status
         ])
 
     # Jadval yaratish
     table = Table(
         data,
-        colWidths=[40, 100, 100, 120, 120]
+        colWidths=[30, 80, 80, 100, 100, 60]
     )
 
     # Jadval stili 
-    table.setStyle(TableStyle([
+    style = [
         ('GRID', (0, 0), (-1, -1), 1, colors.black),   
         ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),  
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),  
@@ -109,7 +136,14 @@ def create_user_pdf():
         ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
         ('TOPPADDING', (0, 0), (-1, -1), 6),
-    ]))
+    ]
+
+    # Bloklangan userlar uchun ko'k rang
+    for i, user in enumerate(users, start=1):
+        if user[5]:  # is_blocked
+            style.append(('BACKGROUND', (0, i), (-1, i), colors.lightblue))
+
+    table.setStyle(TableStyle(style))
 
     pdf.build([table])
     return file_name
