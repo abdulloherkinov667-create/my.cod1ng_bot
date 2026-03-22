@@ -122,6 +122,7 @@ async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
 async def vd_yuklash(message: types.Message, state: FSMContext):
     url = message.text
     match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
+    match = re.search(r"youtube\.com/(?:p|shorts|shorts|tv)/([a-zA-Z0-9_-]+)", url)
     if not match:
         await message.answer("❌ Noto‘g‘ri havola. Iltimos, Instagram video (Reels/Post) linkini yuboring.")
         return
