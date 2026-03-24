@@ -3,6 +3,13 @@ import logging
 import os
 import re
 import shutil
+import telebot
+import instaloader
+import os
+from telebot import types
+from moviepy import VideoFileClip
+import uuid
+import shutil
 
 from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
@@ -12,26 +19,6 @@ from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 from aiogram.client.session.aiohttp import AiohttpSession
 from buttons.defould import start_button
-
-# ---------- Helper ----------
-class YTDLPLogger:
-    def __init__(self):
-        self.last_error = None
-        self.lines = []
-
-    def debug(self, msg: str):
-        self.lines.append(msg)
-
-    def warning(self, msg: str):
-        self.lines.append(msg)
-
-    def error(self, msg: str):
-        self.last_error = msg
-        self.lines.append(msg)
-
-
-def _has_ffmpeg() -> bool:
-    return shutil.which("ffmpeg") is not None
 
 
 from buttons.defould import user_button, send_confirmation_buttons
@@ -43,25 +30,25 @@ from stets import SendImg
 
 API_TOKEN = "8054850246:AAFrie9TuamBBWYrEOzpu1E3jxuh1jFUPnw"
 
-PROXY_URL = None
 
-try:
-    session = AiohttpSession(proxy=PROXY_URL) if PROXY_URL else AiohttpSession()
-except Exception:
-    session = AiohttpSession()
-
-bot = Bot(token=API_TOKEN, session=session)
+bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 ADMIN_ID = [6411347321, 8327989068]
-DOWNLOAD_DIR = "downloads"
-if not os.path.exists(DOWNLOAD_DIR):
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+bot = telebot.TeleBot(API_TOKEN)
 
-# ---------- Video yuklash ----------
-class VideoState(StatesGroup):
-    waiting_for_link = State()
+loader = instaloader.Instaloader(
+    download_comments=False,
+    download_geotags=False,
+    download_pictures=False,
+    download_video_thumbnails=False,
+    save_metadata=False
+)
+
+video_file = None
+folder_name = None
+
 
 
 @dp.message(CommandStart())
@@ -99,145 +86,72 @@ async def start_command(message: types.Message):
 
 
 
+bot.message_handler(F.text == '🎬 Video yuklash')
+def start(message):
+    bot.send_message(message.chat.id, "intagram linkini yuboring")
 
 
-@dp.message(F.text == "🎬 Video yuklash")
-async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
-    await state.set_state(VideoState.waiting_for_link)
-    await message.answer("""
-    🎬 Video yuklash bo‘limiga xush kelibsiz!
-
-📥 Kerakli videoni olish uchun havolani yuboring.
-
-🚫 Videolar hech qanday watermark (Instagram belgisi)siz yuklab beriladi.  
-🚫 Hech qanday reklamalarsiz, toza holatda taqdim etiladi.
-
-⚡ Tezkor va qulay yuklab olish xizmati siz uchun!
-
-🔗 Endi instagram havolani yuboring 👇
-                         """)
-
-
-@dp.message(VideoState.waiting_for_link)
-async def vd_yuklash(message: types.Message, state: FSMContext):
-    url = message.text
-    match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
-    match = re.search(r"youtube\.com/(?:p|shorts|shorts|tv)/([a-zA-Z0-9_-]+)", url)
-    if not match:
-        await message.answer("❌ Noto‘g‘ri havola. Iltimos, Instagram video (Reels/Post) linkini yuboring.")
-        return
-
-    wait_msg = await message.answer("⏳ Yuklanmoqda... Iltimos, biroz sabr qiling.")
-    shortcode = match.group(1)
-    target_dir = os.path.join(DOWNLOAD_DIR, shortcode)
-    os.makedirs(target_dir, exist_ok=True)
-
-    loop = asyncio.get_running_loop()
-    last_progress = {"percent": 0}
-
-
-    async def _edit_status(text: str):
-        try:
-            await wait_msg.edit_text(text)
-        except Exception:
-            pass
-
-    def _progress_hook(d):
-        status = d.get("status")
-        if status == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate")
-            downloaded = d.get("downloaded_bytes", 0)
-            if total:
-                percent = int(downloaded / total * 100)
-            else:
-                percent = None
-
-            if percent is not None:
-                if percent - last_progress["percent"] < 3:
-                    return
-                last_progress["percent"] = percent
-                text = f"⏳ Yuklanmoqda: {percent}% ({downloaded/1024/1024:.1f}/{total/1024/1024:.1f} MB)"
-            else:
-                text = f"⏳ Yuklanmoqda: {downloaded/1024/1024:.1f} MB ..."
-                
-            loop.call_soon_threadsafe(lambda: loop.create_task(_edit_status(text)))
-
-        elif status == "finished":
-            loop.call_soon_threadsafe(
-                lambda: loop.create_task(_edit_status("✅ Yuklandi, tayyorlanmoqda..."))
-            )
-
-    logger = YTDLPLogger()
-
-    ydl_opts = {
-        "outtmpl": os.path.join(target_dir, "%(id)s.%(ext)s"),
-        "format": "bestvideo+bestaudio/best" if _has_ffmpeg() else "best",
-        "progress_hooks": [_progress_hook],
-        "logger": logger,
-        "quiet": True,
-        "no_warnings": True,
-        "restrictfilenames": True,
-        "noplaylist": True,
-        "overwrites": True,
-    }
-
-    video_sent = False
-    ydl_logger = YTDLPLogger()
+@bot.message_handler(func=lambda message: True)
+def get_instagram_video(message):
+    global video_file, folder_name
+    url = message.text.strip()
 
     try:
-        def _download() -> str:
-            with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
-                info = ydl.extract_info(url, download=True)
-                return ydl.prepare_filename(info)
+        shortcode = url.split("/")[-2]
+        folder_name = shortcode
+    except IndexError:
+        bot.reply_to(message, "link notogri")
+        return
 
-        downloaded_file = await asyncio.to_thread(_download)
-        video_path = downloaded_file if downloaded_file and os.path.exists(downloaded_file) else None
+    loader_message = bot.send_message(message.chat.id, "video yuklanyapti...")
 
-        # fallback: look for any downloaded mp4 in the target folder
-        if not video_path and os.path.exists(target_dir):
-            for fil in os.listdir(target_dir):
-                if fil.lower().endswith(".mp4"):
-                    candidate = os.path.join(target_dir, fil)
-                    if os.path.getsize(candidate) > 0:
-                        video_path = candidate
-                        break
+    try:
+        post = instaloader.Post.from_shortcode(loader.context, shortcode)
+        loader.download_post(post, target=shortcode)
 
-        if video_path:
-            await message.answer_video(
-                FSInputFile(video_path),
-                caption=(
-                    """
-                    ✅ Video muvaffaqiyatli yuklandi!
+        for file in os.listdir(shortcode):
+            if file.endswith(".mp4"):
+                video_file = os.path.join(shortcode, file)
+                break
 
-🎬 Video tayyor — endi uni bemalol saqlab olishingiz yoki qayta ko‘rishingiz mumkin.
-
-🚫 Hech qanday watermarksiz  
-🚫 Reklamalarsiz, toza holatda
-
-⚡ Siz uchun tezkor va qulay xizmat!
-
-🤖 Bot: @my_cod1ngbot
-                    """
-                ),
-            )
-            video_sent = True
+        if video_file:
+            with open(video_file, "rb") as video:
+                markup = types.InlineKeyboardMarkup()
+                btn1 = types.InlineKeyboardButton("audioni yuklab olish", callback_data="get_audio")
+                markup.add(btn1)
+                bot.send_video(message.chat.id, video, reply_markup=markup)
+            bot.delete_message(message.chat.id, loader_message.message_id)
         else:
-            raise RuntimeError("Yuklangan video topilmadi")
+            bot.delete_message(message.chat.id, loader_message.message_id)
+            bot.reply_to(message, "video topilmadi")
 
     except Exception as e:
-        logging.exception("Instagram videoni yuklashda xatolik: %s", e)
+        bot.delete_message(message.chat.id, loader_message.message_id)
+        bot.reply_to(message, f"xatoli: {e}")
 
-        info_text = ydl_logger.last_error or "Noma'lum xatolik yuz berdi."
 
-        await message.answer(
-            "⚠️ Yuklashda muammo yuz berdi. Iltimos, linkni tekshirib qayta urinib ko‘ring."
-        )
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query(call):
+    global video_file, folder_name
+    if call.data == "get_audio":
+        try:
+            bot.send_message(call.message.chat.id, "audio yuklanyapti...")
 
-    finally:
-        if os.path.exists(target_dir):
-            shutil.rmtree(target_dir)
-        await wait_msg.delete()
-        await state.clear()
+            video = VideoFileClip(video_file)
+            audio = video.audio
+            audio_name = f"{uuid.uuid4()}.mp3"
+            audio.write_audiofile(audio_name)
+            video.close()
+
+            with open(audio_name, "rb") as audio_:
+                bot.send_audio(call.message.chat.id, audio_)
+            os.remove(audio_name)
+
+        except Exception as e:
+            bot.reply_to(call.message, f"audio yuklashda xatolik: {e}")
+        finally:
+            if os.path.exists(folder_name):
+                shutil.rmtree(folder_name, ignore_errors=True)
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
