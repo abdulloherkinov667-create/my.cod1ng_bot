@@ -240,6 +240,15 @@ async def bekor(message: types.Message, state: FSMContext):
     await state.clear()
 
 
+
+
+
+
+
+
+
+
+
 async def main():
     logging.basicConfig(level=logging.INFO)
 
