@@ -4,6 +4,8 @@ import os
 import re
 import shutil
 import uuid
+import json
+from datetime import datetime
 from moviepy import VideoFileClip
 from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
@@ -28,6 +30,45 @@ ADMIN_ID = [6411347321, 8327989068]
 # FSM states for Instagram download
 class InstagramStates(StatesGroup):
     waiting_for_link = State()
+
+# Cookies file path (create cookies.txt from browser)
+COOKIES_FILE = "cookies.txt"
+
+# Function to check if cookies file exists
+def has_cookies():
+    return os.path.exists(COOKIES_FILE)
+
+# Function to split video into parts
+def split_video(video_path, max_size_mb=49):
+    """Split video into parts smaller than max_size_mb"""
+    file_size = os.path.getsize(video_path) / (1024 * 1024)
+    if file_size <= max_size_mb:
+        return [video_path]
+    
+    # Calculate number of parts needed
+    num_parts = int(file_size / max_size_mb) + 1
+    parts = []
+    
+    try:
+        video = VideoFileClip(video_path)
+        duration = video.duration
+        part_duration = duration / num_parts
+        
+        for i in range(num_parts):
+            start_time = i * part_duration
+            end_time = min((i + 1) * part_duration, duration)
+            
+            part_video = video.subclipped(start_time, end_time)
+            part_filename = f"{video_path}_part{i+1}.mp4"
+            part_video.write_videofile(part_filename, codec='libx264', audio_codec='aac', logger=None)
+            part_video.close()
+            parts.append(part_filename)
+        
+        video.close()
+        return parts
+    except Exception as e:
+        print(f"Error splitting video: {e}")
+        return [video_path]
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -78,53 +119,151 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
     loading_msg = await message.answer("📥 Video yuklanmoqda, iltimos kuting...")
     
     try:
-        # yt-dlp options for Instagram
+        # Generate unique filename
+        unique_id = str(uuid.uuid4())[:8]
+        output_template = f"downloads/{unique_id}_%(title)s.%(ext)s"
+        
+        # Create downloads directory if not exists
+        os.makedirs("downloads", exist_ok=True)
+        
+        # yt-dlp options with better Instagram support
         ydl_opts = {
             'format': 'best[ext=mp4]/best',
-            'outtmpl': f'{message.chat.id}_%(title)s.%(ext)s',
+            'outtmpl': output_template,
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'headers': {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+            },
+            'retries': 10,
+            'fragment_retries': 10,
+            'extract_flat': 'in_playlist',
+            'prefer_insecure': False,
         }
         
+        # Add cookies if available
+        if has_cookies():
+            ydl_opts['cookiefile'] = COOKIES_FILE
+        
+        video_file = None
+        
         with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            video_file = ydl.prepare_filename(info)
-            
-            if os.path.exists(video_file):
-                # Create inline keyboard for audio download
-                markup = types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text="🎵 Audio yuklab olish", callback_data=f"audio_{video_file}")]
-                ])
+            try:
+                # Download video
+                ydl.download([url])
                 
-                # Send video
-                with open(video_file, 'rb') as video:
-                    await message.answer_video(
-                        video=types.BufferedInputFile(video.read(), filename=os.path.basename(video_file)),
-                        caption="✅ Video muvaffaqiyatli yuklandi!",
-                        reply_markup=markup
+                # Find the actual downloaded file
+                downloaded_files = [f for f in os.listdir('downloads') if f.startswith(unique_id)]
+                if downloaded_files:
+                    video_file = os.path.join('downloads', downloaded_files[0])
+                
+                if video_file and os.path.exists(video_file):
+                    # Check file size
+                    file_size_mb = os.path.getsize(video_file) / (1024 * 1024)
+                    
+                    # Create inline keyboard for audio download
+                    markup = types.InlineKeyboardMarkup(inline_keyboard=[
+                        [types.InlineKeyboardButton(text="🎵 Audio yuklab olish", callback_data=f"audio_{video_file}")]
+                    ])
+                    
+                    if file_size_mb <= 50:
+                        # Send video directly
+                        with open(video_file, 'rb') as video:
+                            await message.answer_video(
+                                video=types.BufferedInputFile(video.read(), filename=os.path.basename(video_file)),
+                                caption=f"✅ Video muvaffaqiyatli yuklandi!\n📊 Hajmi: {file_size_mb:.1f}MB",
+                                reply_markup=markup
+                            )
+                    else:
+                        # Video is too large, split it
+                        await message.answer(f"⚠️ Video hajmi {file_size_mb:.1f}MB (Telegram cheklovi: 50MB).\n🔄 Videoni qismlarga bo'lib yuboryapman...")
+                        
+                        # Split video into parts
+                        video_parts = split_video(video_file)
+                        
+                        if len(video_parts) == 1:
+                            # Couldn't split, just send as is
+                            with open(video_file, 'rb') as video:
+                                await message.answer_video(
+                                    video=types.BufferedInputFile(video.read(), filename=os.path.basename(video_file)),
+                                    caption=f"⚠️ Video hajmi katta ({file_size_mb:.1f}MB). Telegram cheklovi tufayli yuborib bo'lmadi.",
+                                    reply_markup=markup
+                                )
+                        else:
+                            # Send each part
+                            for i, part_path in enumerate(video_parts, 1):
+                                part_size = os.path.getsize(part_path) / (1024 * 1024)
+                                with open(part_path, 'rb') as part:
+                                    await message.answer_video(
+                                        video=types.BufferedInputFile(part.read(), filename=f"video_part_{i}.mp4"),
+                                        caption=f"📹 {i}/{len(video_parts)} qism | Hajmi: {part_size:.1f}MB"
+                                    )
+                                # Clean up part file
+                                os.remove(part_path)
+                            
+                            # Send audio option for the full video
+                            await message.answer(
+                                "🎵 Videodan audio ajratib olishni xohlaysizmi?",
+                                reply_markup=markup
+                            )
+                    
+                    await loading_msg.delete()
+                    await state.clear()
+                else:
+                    await loading_msg.delete()
+                    await message.answer("❌ Video topilmadi. Iltimos, boshqa linkni sinab ko'ring.")
+                    
+            except Exception as e:
+                error_msg = str(e)
+                if "login required" in error_msg.lower() or "rate-limit" in error_msg.lower():
+                    await loading_msg.delete()
+                    await message.answer(
+                        "⚠️ Instagram cheklovlari tufayli video yuklab bo'lmadi.\n\n"
+                        "🔧 Yechimlar:\n"
+                        "1. Bir necha daqiqadan so'ng qayta urinib ko'ring\n"
+                        "2. Boshqa Instagram linkini sinab ko'ring\n"
+                        "3. Agar muammo takrorlansa, admin bilan bog'laning\n\n"
+                        "📞 Admin: @your_admin_username"
                     )
-                
-                await loading_msg.delete()
-                await state.clear()
-            else:
-                await loading_msg.delete()
-                await message.answer("❌ Video topilmadi. Iltimos, boshqa linkni sinab ko'ring.")
+                else:
+                    raise e
                 
     except Exception as e:
         await loading_msg.delete()
-        await message.answer(f"❌ Xatolik yuz berdi: {str(e)}\nIltimos, keyinroq qayta urinib ko'ring.")
+        error_message = str(e)
+        
+        # Check for specific errors
+        if "rate-limit" in error_message.lower():
+            await message.answer(
+                "⚠️ Instagram so'rovlar chekloviga uchradi.\n"
+                "Iltimos, 5-10 daqiqadan so'ng qayta urinib ko'ring."
+            )
+        elif "login required" in error_message.lower():
+            await message.answer(
+                "⚠️ Instagram autentifikatsiya talab qilmoqda.\n"
+                "Bu vaqtinchalik muammo. Iltimos, keyinroq qayta urinib ko'ring."
+            )
+        else:
+            await message.answer(f"❌ Xatolik: {error_message[:200]}\nIltimos, keyinroq qayta urinib ko'ring.")
+        
         await state.clear()
     
     finally:
         # Clean up downloaded files
-        for file in os.listdir('.'):
-            if file.startswith(str(message.chat.id)) and file.endswith(('.mp4', '.webm', '.mkv')):
-                try:
-                    os.remove(file)
-                except:
-                    pass
+        try:
+            if os.path.exists('downloads'):
+                for file in os.listdir('downloads'):
+                    if file.startswith(unique_id):
+                        file_path = os.path.join('downloads', file)
+                        if os.path.exists(file_path):
+                            os.remove(file_path)
+        except Exception as e:
+            print(f"Cleanup error: {e}")
 
 @dp.callback_query(F.data.startswith("audio_"))
 async def extract_audio(callback: types.CallbackQuery):
@@ -143,11 +282,11 @@ async def extract_audio(callback: types.CallbackQuery):
         audio = video_clip.audio
         
         if audio is not None:
-            audio_filename = f"{uuid.uuid4()}.mp3"
-            audio.write_audiofile(audio_filename, logger=None)
+            audio_filename = f"audio_{uuid.uuid4()}.mp3"
+            audio.write_audiofile(audio_filename, logger=None, verbose=False)
             video_clip.close()
             
-            # Send audio
+            # Send audio (no size limit check for audio)
             with open(audio_filename, 'rb') as audio_file:
                 await callback.message.answer_audio(
                     audio=types.BufferedInputFile(audio_file.read(), filename=audio_filename),
@@ -253,6 +392,9 @@ async def bekor(message: types.Message, state: FSMContext):
 
 async def main():
     logging.basicConfig(level=logging.INFO)
+    
+    # Create downloads directory
+    os.makedirs("downloads", exist_ok=True)
     
     try:
         await bot.delete_webhook(drop_pending_updates=True)
