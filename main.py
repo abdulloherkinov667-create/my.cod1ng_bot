@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import instaloader
 
 from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
@@ -106,12 +107,17 @@ async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
 
 📥 Kerakli videoni olish uchun havolani yuboring.
 
+✅ Qollab-quvvatlanadi:
+  • 📸 Instagram Reels
+  • 🎥 Instagram Posts
+  • ▶️ YouTube
+
 🚫 Videolar hech qanday watermark (Instagram belgisi)siz yuklab beriladi.  
 🚫 Hech qanday reklamalarsiz, toza holatda taqdim etiladi.
 
 ⚡ Tezkor va qulay yuklab olish xizmati siz uchun!
 
-🔗 Instagram yoki YouTube havolasini yuboring 👇
+🔗 Havolani yuboring 👇
                          """)
 
 
@@ -192,10 +198,34 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 
     try:
         def _download() -> str:
-            # Use yt_dlp for both YouTube and Instagram (more reliable)
-            with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
-                info = ydl.extract_info(url, download=True)
-                return ydl.prepare_filename(info)
+            if is_instagram:
+                # Use instaloader for Instagram Reels
+                try:
+                    loader = instaloader.Instaloader(
+                        download_videos=True,
+                        save_metadata=False,
+                        compress_json=False,
+                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                    )
+                    # Get post using shortcode
+                    post = instaloader.Post.from_shortcode(loader.context, shortcode)
+                    loader.download_post(post, target=target_dir)
+                    
+                    # Find the downloaded video file
+                    for root, dirs, files in os.walk(target_dir):
+                        for fil in files:
+                            if fil.lower().endswith(".mp4"):
+                                return os.path.join(root, fil)
+                    
+                    raise RuntimeError("No MP4 found after download")
+                except Exception as e:
+                    logging.error(f"Instaloader error: {e}")
+                    raise
+            else:
+                # Use yt_dlp for YouTube
+                with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    return ydl.prepare_filename(info)
 
         downloaded_file = await asyncio.to_thread(_download)
         video_path = downloaded_file if downloaded_file and os.path.exists(downloaded_file) else None
