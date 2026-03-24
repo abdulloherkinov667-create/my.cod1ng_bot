@@ -3,7 +3,6 @@ import logging
 import os
 import re
 import shutil
-import instaloader
 
 from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
@@ -178,11 +177,10 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
     logger = YTDLPLogger()
 
     ydl_opts = {
-        "outtmpl": os.path.join(target_dir, "%(id)s.%(ext)s"),
+        "outtmpl": os.path.join(target_dir, "%(title)s.%(ext)s"),
         "format": "bestvideo+bestaudio/best" if _has_ffmpeg() else "best",
         "progress_hooks": [_progress_hook],
         "logger": logger,
-        "quiet": True,
         "no_warnings": True,
         "restrictfilenames": True,
         "noplaylist": True,
@@ -194,34 +192,10 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 
     try:
         def _download() -> str:
-            if is_instagram:
-                # Download Instagram video using instaloader
-                try:
-                    loader = instaloader.Instaloader(
-                        download_videos=True,
-                        save_metadata=False,
-                        compress_json=False
-                    )
-                    post = instaloader.Post.from_shortcode(loader.context, shortcode)
-                    loader.download_post(post, target=target_dir)
-                    
-                    # Find the downloaded video file
-                    for fil in os.listdir(target_dir):
-                        if fil.lower().endswith((".mp4", ".mkv")):
-                            return os.path.join(target_dir, fil)
-                except Exception as ig_err:
-                    logging.warning(f"Instaloader failed, trying yt_dlp: {ig_err}")
-                    # Fallback to yt_dlp for Instagram
-                    with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
-                        info = ydl.extract_info(url, download=True)
-                        return ydl.prepare_filename(info)
-            else:
-                # Download YouTube video using yt_dlp
-                with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    return ydl.prepare_filename(info)
-            
-            return None
+            # Use yt_dlp for both YouTube and Instagram (more reliable)
+            with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
+                info = ydl.extract_info(url, download=True)
+                return ydl.prepare_filename(info)
 
         downloaded_file = await asyncio.to_thread(_download)
         video_path = downloaded_file if downloaded_file and os.path.exists(downloaded_file) else None
