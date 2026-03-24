@@ -1,7 +1,6 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 import asyncio
 import logging
-import instaloader
 import re
 import os
 

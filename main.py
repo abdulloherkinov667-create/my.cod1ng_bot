@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import instaloader
 
 from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
@@ -92,20 +93,17 @@ async def start_command(message: types.Message):
 
 👇 Davom etish uchun pastdagi tugmani bosing.
 
-✨ Shundan so‘ng sizga keyingi qadamlar ko‘rsatib beriladi.
+✨ Shundan so'ng sizga keyingi qadamlar ko'rsatib beriladi.
             """
         )
         await message.answer(text, parse_mode="HTML", reply_markup=start_button())
-
-
-
 
 
 @dp.message(F.text == "🎬 Video yuklash")
 async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
     await state.set_state(VideoState.waiting_for_link)
     await message.answer("""
-    🎬 Video yuklash bo‘limiga xush kelibsiz!
+    🎬 Video yuklash bo'limiga xush kelibsiz!
 
 📥 Kerakli videoni olish uchun havolani yuboring.
 
@@ -114,17 +112,28 @@ async def vd_yukla_buyruq(message: types.Message, state: FSMContext):
 
 ⚡ Tezkor va qulay yuklab olish xizmati siz uchun!
 
-🔗 Endi instagram havolani yuboring 👇
+🔗 Instagram yoki YouTube havolasini yuboring 👇
                          """)
 
 
 @dp.message(VideoState.waiting_for_link)
 async def vd_yuklash(message: types.Message, state: FSMContext):
     url = message.text
-    match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
-    match = re.search(r"youtube\.com/(?:p|shorts|shorts|tv)/([a-zA-Z0-9_-]+)", url)
-    if not match:
-        await message.answer("❌ Noto‘g‘ri havola. Iltimos, Instagram video (Reels/Post) linkini yuboring.")
+    
+    # Check for Instagram link
+    instagram_match = re.search(r"instagram\.com/(?:p|reels|reel|tv)/([a-zA-Z0-9_-]+)", url)
+    # Check for YouTube link
+    youtube_match = re.search(r"(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]+)", url)
+    
+    # Determine platform
+    if instagram_match:
+        match = instagram_match
+        is_instagram = True
+    elif youtube_match:
+        match = youtube_match
+        is_instagram = False
+    else:
+        await message.answer("❌ Noto'g'ri havola. Iltimos, YouTube yoki Instagram video linkini yuboring.")
         return
 
     wait_msg = await message.answer("⏳ Yuklanmoqda... Iltimos, biroz sabr qiling.")
@@ -134,7 +143,6 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 
     loop = asyncio.get_running_loop()
     last_progress = {"percent": 0}
-
 
     async def _edit_status(text: str):
         try:
@@ -186,17 +194,42 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
 
     try:
         def _download() -> str:
-            with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
-                info = ydl.extract_info(url, download=True)
-                return ydl.prepare_filename(info)
+            if is_instagram:
+                # Download Instagram video using instaloader
+                try:
+                    loader = instaloader.Instaloader(
+                        download_videos=True,
+                        save_metadata=False,
+                        compress_json=False
+                    )
+                    post = instaloader.Post.from_shortcode(loader.context, shortcode)
+                    loader.download_post(post, target=target_dir)
+                    
+                    # Find the downloaded video file
+                    for fil in os.listdir(target_dir):
+                        if fil.lower().endswith((".mp4", ".mkv")):
+                            return os.path.join(target_dir, fil)
+                except Exception as ig_err:
+                    logging.warning(f"Instaloader failed, trying yt_dlp: {ig_err}")
+                    # Fallback to yt_dlp for Instagram
+                    with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        return ydl.prepare_filename(info)
+            else:
+                # Download YouTube video using yt_dlp
+                with YoutubeDL({**ydl_opts, "logger": ydl_logger}) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    return ydl.prepare_filename(info)
+            
+            return None
 
         downloaded_file = await asyncio.to_thread(_download)
         video_path = downloaded_file if downloaded_file and os.path.exists(downloaded_file) else None
 
-        # fallback: look for any downloaded mp4 in the target folder
+        # fallback: look for any downloaded video in the target folder
         if not video_path and os.path.exists(target_dir):
             for fil in os.listdir(target_dir):
-                if fil.lower().endswith(".mp4"):
+                if fil.lower().endswith((".mp4", ".mkv", ".mov")):
                     candidate = os.path.join(target_dir, fil)
                     if os.path.getsize(candidate) > 0:
                         video_path = candidate
@@ -209,7 +242,7 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
                     """
                     ✅ Video muvaffaqiyatli yuklandi!
 
-🎬 Video tayyor — endi uni bemalol saqlab olishingiz yoki qayta ko‘rishingiz mumkin.
+🎬 Video tayyor — endi uni bemalol saqlab olishingiz yoki qayta ko'rishingiz mumkin.
 
 🚫 Hech qanday watermarksiz  
 🚫 Reklamalarsiz, toza holatda
@@ -225,18 +258,21 @@ async def vd_yuklash(message: types.Message, state: FSMContext):
             raise RuntimeError("Yuklangan video topilmadi")
 
     except Exception as e:
-        logging.exception("Instagram videoni yuklashda xatolik: %s", e)
+        logging.exception("Videoni yuklashda xatolik: %s", e)
 
         info_text = ydl_logger.last_error or "Noma'lum xatolik yuz berdi."
 
         await message.answer(
-            "⚠️ Yuklashda muammo yuz berdi. Iltimos, linkni tekshirib qayta urinib ko‘ring."
+            "⚠️ Yuklashda muammo yuz berdi. Iltimos, linkni tekshirib qayta urinib ko'ring."
         )
 
     finally:
         if os.path.exists(target_dir):
             shutil.rmtree(target_dir)
-        await wait_msg.delete()
+        try:
+            await wait_msg.delete()
+        except:
+            pass
         await state.clear()
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
@@ -245,14 +281,14 @@ async def show_users(message: types.Message):
         await check_blocked_users(bot)
         pdf_file = create_user_pdf()
         await message.answer_document(FSInputFile(pdf_file), caption="""
-👥 Foydalanuvchilar ro‘yxatini
+👥 Foydalanuvchilar ro'yxatini
                                       """)
 
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
     await message.answer("""
-                         📢 Xabar yuborish bo‘limi
+                         📢 Xabar yuborish bo'limi
 
 ✉️ Foydalanuvchilarga yuboriladigan xabar turini tanlang.
 
@@ -262,7 +298,7 @@ async def xabar_yuborish_boshlash(message: types.Message):
 • Rasm (photo)
 • Video
 
-⚙️ Tanlagan turga qarab keyingi bosqichlar ko‘rsatib beriladi.
+⚙️ Tanlagan turga qarab keyingi bosqichlar ko'rsatib beriladi.
 
 👇 Davom etish uchun xabar turini tanlang.
                          """, reply_markup=xabar_yubor())
@@ -273,9 +309,9 @@ async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.answer("""
                                   🖼 Rasm yuborish
 
-📸 Iltimos, foydalanuvchilarga yubormoqchi bo‘lgan rasmingizni yuboring.
+📸 Iltimos, foydalanuvchilarga yubormoqchi bo'lgan rasmingizni yuboring.
 
-✏️ Rasm bilan birga izoh (caption) ham qo‘shishingiz mumkin.
+✏️ Rasm bilan birga izoh (caption) ham qo'shishingiz mumkin.
 
 ⚡ Yuborilgan rasm barcha tanlangan foydalanuvchilarga yetkaziladi.
 
@@ -289,7 +325,7 @@ async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
     await message.answer("""
-                         ✏️ Rasm uchun izoh qo‘shish
+                         ✏️ Rasm uchun izoh qo'shish
 
 📝 Endi yuborilgan rasm uchun matn (caption) kiriting.
                          """)
@@ -320,7 +356,7 @@ async def yubor(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-@dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
+@dp.message(SendImg.confirm, F.text == "Yo'q ❌")
 async def bekor(message: types.Message, state: FSMContext):
     await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
