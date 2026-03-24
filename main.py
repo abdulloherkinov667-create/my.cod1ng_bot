@@ -18,7 +18,7 @@ from create import insert_user, users_table, create_user_pdf, get_all_users, che
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
-API_TOKEN = "8054850246:AAGlgGkJ0VpGarnaf7wXrx1H_WPCh_R59wA"
+API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 ADMIN_ID = [6411347321, 8327989068]
 
 bot = Bot(token=API_TOKEN)
