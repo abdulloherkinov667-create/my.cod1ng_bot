@@ -9,7 +9,6 @@ from moviepy import VideoFileClip
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
 from buttons.defould import start_button, user_button, send_confirmation_buttons
@@ -23,6 +22,7 @@ ADMIN_ID = [6411347321, 8327989068]
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
+# --- INSTAGRAM LOADER ---
 loader = instaloader.Instaloader(
     download_comments=False,
     download_geotags=False,
@@ -32,22 +32,20 @@ loader = instaloader.Instaloader(
     compress_json=False
 )
 
-# --- PROGRESS ---
-async def update_progress(message: types.Message):
-    progress_chars = ["⬜"] * 10
+# --- PROGRESS BAR ---
+async def update_progress(msg):
+    bar = ["⬜"] * 10
     for i in range(10):
-        progress_chars[i] = "🟩"
-        percent = (i + 1) * 10
-        bar = "".join(progress_chars)
+        bar[i] = "🟩"
         try:
-            await message.edit_text(f"📥 Yuklanmoqda: {percent}%\n{bar}")
+            await msg.edit_text(f"📥 Yuklanmoqda: {(i+1)*10}%\n{''.join(bar)}")
             await asyncio.sleep(0.4)
         except:
             pass
 
 # --- START ---
 @dp.message(CommandStart())
-async def start_command(message: types.Message):
+async def start(message: types.Message):
     await users_table()
     insert_user(
         first_name=message.from_user.first_name,
@@ -63,51 +61,51 @@ async def start_command(message: types.Message):
     else:
         await message.answer("👋 Xush kelibsiz", reply_markup=start_button())
 
-# --- VIDEO BOSHLASH ---
-@dp.message(F.text == '🎬 Video yuklash')
+# --- VIDEO TUGMA ---
+@dp.message(F.text == "🎬 Video yuklash")
 async def ask_link(message: types.Message):
-    await message.answer("🔗 Instagram link yubor:")
+    await message.answer("🔗 Instagram video linkini yuboring:")
 
-# --- ASOSIY FIX QISM ---
+# --- VIDEO YUKLASH (FULL FIX) ---
 @dp.message(F.text.contains("instagram.com"))
-async def get_instagram_video(message: types.Message):
+async def download_video(message: types.Message):
     url = message.text.strip()
 
     try:
-        shortcode = url.split("/")[-2] if url.endswith('/') else url.split("/")[-1]
+        shortcode = url.split("/")[-2] if url.endswith("/") else url.split("/")[-1]
         if "?" in shortcode:
             shortcode = shortcode.split("?")[0]
     except:
-        await message.answer("❌ Link noto‘g‘ri")
+        await message.answer("❌ Link xato")
         return
 
-    loader_msg = await message.answer("⏳ Yuklanmoqda: 0%\n⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜")
-    progress_task = asyncio.create_task(update_progress(loader_msg))
+    msg = await message.answer("⏳ Yuklanmoqda: 0%\n⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜")
+    progress = asyncio.create_task(update_progress(msg))
 
     try:
-        target_dir = f"temp_{uuid.uuid4().hex[:8]}"
-        os.makedirs(target_dir, exist_ok=True)
+        folder = f"temp_{uuid.uuid4().hex[:6]}"
+        os.makedirs(folder, exist_ok=True)
 
         loop = asyncio.get_event_loop()
         post = await loop.run_in_executor(None, lambda: instaloader.Post.from_shortcode(loader.context, shortcode))
-        await loop.run_in_executor(None, lambda: loader.download_post(post, target=target_dir))
+        await loop.run_in_executor(None, lambda: loader.download_post(post, target=folder))
 
-        await progress_task
+        await progress
 
-        # 🔥 VIDEO TOPISH (FIX)
+        # 🔥 VIDEO QIDIRISH (ENG MUHIM FIX)
         video_path = None
-        for root, dirs, files in os.walk(target_dir):
-            for file in files:
-                if file.endswith(".mp4"):
-                    video_path = os.path.join(root, file)
+        for root, dirs, files in os.walk(folder):
+            for f in files:
+                if f.endswith(".mp4"):
+                    video_path = os.path.join(root, f)
                     break
 
         if not video_path:
-            await loader_msg.edit_text("❌ Video topilmadi")
-            shutil.rmtree(target_dir, ignore_errors=True)
+            await msg.edit_text("❌ Video topilmadi")
+            shutil.rmtree(folder, ignore_errors=True)
             return
 
-        await loader_msg.edit_text("📤 Video yuborilmoqda...")
+        await msg.edit_text("📤 Video yuborilmoqda...")
 
         video = FSInputFile(video_path)
 
@@ -116,28 +114,23 @@ async def get_instagram_video(message: types.Message):
             caption="✅ Video yuklandi"
         )
 
-        await loader_msg.delete()
-        shutil.rmtree(target_dir, ignore_errors=True)
+        await msg.delete()
+        shutil.rmtree(folder, ignore_errors=True)
 
     except Exception as e:
-        await loader_msg.edit_text(f"⚠️ Xatolik: {e}")
-        shutil.rmtree(target_dir, ignore_errors=True)
+        await msg.edit_text(f"⚠️ Xatolik: {e}")
+        shutil.rmtree(folder, ignore_errors=True)
 
-# --- AUDIO ---
-@dp.callback_query(F.data.startswith("audio_"))
-async def get_audio_callback(call: types.CallbackQuery):
-    await call.answer("⚠️ Bu versiyada audio o‘chirilgan")
-
-# --- ADMIN (tegilmadi) ---
+# --- ADMIN ---
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         await check_blocked_users(bot)
-        pdf_file = create_user_pdf()
-        await message.answer_document(FSInputFile(pdf_file))
+        pdf = create_user_pdf()
+        await message.answer_document(FSInputFile(pdf))
 
 @dp.message(F.text == "Xabar yuborish 📨")
-async def xabar_yuborish_boshlash(message: types.Message):
+async def send_msg(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         await message.answer("📢 Tanlang:", reply_markup=xabar_yubor())
 
