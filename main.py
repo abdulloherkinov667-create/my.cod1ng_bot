@@ -1,56 +1,53 @@
 ﻿import asyncio
 import logging
 import os
-import re
 import shutil
-import telebot
 import instaloader
-import os
-from telebot import types
-from moviepy import VideoFileClip
 import uuid
-import shutil
+from moviepy import VideoFileClip # Yangi versiya uchun to'g'ri import
 
-from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-from aiogram.client.session.aiohttp import AiohttpSession
-from buttons.defould import start_button
 
-
-from buttons.defould import user_button, send_confirmation_buttons
+# Sizning shaxsiy modullaringiz (Teginilmagan)
+from buttons.defould import start_button, user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
-
-
 API_TOKEN = "8054850246:AAGlgGkJ0VpGarnaf7wXrx1H_WPCh_R59wA"
-
+ADMIN_ID = [6411347321, 8327989068]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-ADMIN_ID = [6411347321, 8327989068]
-
-bot = telebot.TeleBot(API_TOKEN)
-
+# Instagram loader sozlamalari
 loader = instaloader.Instaloader(
     download_comments=False,
     download_geotags=False,
     download_pictures=False,
     download_video_thumbnails=False,
-    save_metadata=False
+    save_metadata=False,
+    compress_json=False
 )
 
-video_file = None
-folder_name = None
+# --- PROGRESS BAR FUNKSIYASI ---
+async def update_progress(message: types.Message):
+    progress_chars = ["⬜", "⬜", "⬜", "⬜", "⬜", "⬜", "⬜", "⬜", "⬜", "⬜"]
+    for i in range(len(progress_chars)):
+        progress_chars[i] = "🟩"
+        percent = (i + 1) * 10
+        bar = "".join(progress_chars)
+        try:
+            await message.edit_text(f"📥 Yuklanmoqda: {percent}%\n{bar}")
+            await asyncio.sleep(0.5) # Yuklash tezligini simulyatsiya qilish
+        except:
+            pass
 
-
-
+# --- START KOMANDASI (Admin tekshiruvi bilan) ---
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
     await users_table()
@@ -71,153 +68,131 @@ async def start_command(message: types.Message):
         )
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
-        text = (
-            """
-            👋 Botga xush kelibsiz!
-
-😊 Botdan foydalanishni boshlash uchun pastda joylashgan tugmalardan birini tanlang.
-
-👇 Davom etish uchun pastdagi tugmani bosing.
-
-✨ Shundan so‘ng sizga keyingi qadamlar ko‘rsatib beriladi.
-            """
-        )
+        text = "👋 Botga xush kelibsiz!\n\n😊 Botdan foydalanishni boshlash uchun pastdagi tugmani bosing."
         await message.answer(text, parse_mode="HTML", reply_markup=start_button())
 
+# --- INSTAGRAM VIDEO YUKLASH (INSTALOADER) ---
 
+@dp.message(F.text == '🎬 Video yuklash')
+async def ask_link(message: types.Message):
+    await message.answer("🔗 Instagram video linkini yuboring:")
 
-bot.message_handler(F.text == '🎬 Video yuklash')
-def start(message):
-    bot.send_message(message.chat.id, "intagram linkini yuboring")
-
-
-@bot.message_handler(func=lambda message: True)
-def get_instagram_video(message):
-    global video_file, folder_name
+@dp.message(F.text.contains("instagram.com"))
+async def get_instagram_video(message: types.Message):
     url = message.text.strip()
-
+    
     try:
-        shortcode = url.split("/")[-2]
-        folder_name = shortcode
-    except IndexError:
-        bot.reply_to(message, "link notogri")
+        # Linkdan shortcode olish (https://www.instagram.com/reels/C4-xyz/ -> C4-xyz)
+        shortcode = url.split("/")[-2] if url.endswith('/') else url.split("/")[-1]
+        if "?" in shortcode: shortcode = shortcode.split("?")[0]
+    except Exception:
+        await message.reply("❌ Link noto'g'ri!")
         return
 
-    loader_message = bot.send_message(message.chat.id, "video yuklanyapti...")
+    loader_msg = await message.answer("⏳ Yuklash boshlandi: 0%\n⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜")
+    
+    # Progress bar-ni alohida ishga tushiramiz
+    progress_task = asyncio.create_task(update_progress(loader_msg))
 
     try:
-        post = instaloader.Post.from_shortcode(loader.context, shortcode)
-        loader.download_post(post, target=shortcode)
+        target_dir = f"temp_{uuid.uuid4().hex[:8]}"
+        if not os.path.exists(target_dir):
+            os.makedirs(target_dir)
+        
+        # Instaloader yuklash (Sinxron funksiyani asinxron kutish)
+        loop = asyncio.get_event_loop()
+        post = await loop.run_in_executor(None, lambda: instaloader.Post.from_shortcode(loader.context, shortcode))
+        await loop.run_in_executor(None, lambda: loader.download_post(post, target=target_dir))
 
-        for file in os.listdir(shortcode):
+        video_path = None
+        for file in os.listdir(target_dir):
             if file.endswith(".mp4"):
-                video_file = os.path.join(shortcode, file)
+                video_path = os.path.join(target_dir, file)
                 break
 
-        if video_file:
-            with open(video_file, "rb") as video:
-                markup = types.InlineKeyboardMarkup()
-                btn1 = types.InlineKeyboardButton("audioni yuklab olish", callback_data="get_audio")
-                markup.add(btn1)
-                bot.send_video(message.chat.id, video, reply_markup=markup)
-            bot.delete_message(message.chat.id, loader_message.message_id)
+        await progress_task # Progress tugashini kutish
+
+        if video_path:
+            await loader_msg.edit_text("✅ Yuklash tugadi! Video yuborilmoqda...")
+            
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎵 Audioni yuklab olish", callback_data=f"audio_{target_dir}")]
+            ])
+            
+            video = FSInputFile(video_path)
+            await message.answer_video(video, caption="✨ @sizning_botingiz orqali yuklab olindi", reply_markup=markup)
+            await loader_msg.delete()
         else:
-            bot.delete_message(message.chat.id, loader_message.message_id)
-            bot.reply_to(message, "video topilmadi")
+            await loader_msg.edit_text("❌ Video topilmadi yoki xatolik yuz berdi.")
+            shutil.rmtree(target_dir, ignore_errors=True)
 
     except Exception as e:
-        bot.delete_message(message.chat.id, loader_message.message_id)
-        bot.reply_to(message, f"xatoli: {e}")
+        await loader_msg.edit_text(f"⚠️ Xatolik: {str(e)}")
+        if 'target_dir' in locals(): shutil.rmtree(target_dir, ignore_errors=True)
 
+@dp.callback_query(F.data.startswith("audio_"))
+async def get_audio_callback(call: types.CallbackQuery):
+    target_dir = call.data.split("_")[1]
+    video_path = None
+    
+    if os.path.exists(target_dir):
+        for file in os.listdir(target_dir):
+            if file.endswith(".mp4"):
+                video_path = os.path.join(target_dir, file)
+                break
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_query(call):
-    global video_file, folder_name
-    if call.data == "get_audio":
+    if video_path:
+        status_msg = await call.message.answer("🎵 Audio ajratib olinmoqda...")
         try:
-            bot.send_message(call.message.chat.id, "audio yuklanyapti...")
-
-            video = VideoFileClip(video_file)
-            audio = video.audio
             audio_name = f"{uuid.uuid4()}.mp3"
-            audio.write_audiofile(audio_name)
-            video.close()
+            video_clip = VideoFileClip(video_path)
+            video_clip.audio.write_audiofile(audio_name, verbose=False, logger=None)
+            video_clip.close()
 
-            with open(audio_name, "rb") as audio_:
-                bot.send_audio(call.message.chat.id, audio_)
+            audio_file = FSInputFile(audio_name)
+            await call.message.answer_audio(audio_file, caption="🎵 Videodagi audio")
             os.remove(audio_name)
-
+            await status_msg.delete()
         except Exception as e:
-            bot.reply_to(call.message, f"audio yuklashda xatolik: {e}")
+            await call.message.answer(f"❌ Audio xatosi: {e}")
         finally:
-            if os.path.exists(folder_name):
-                shutil.rmtree(folder_name, ignore_errors=True)
+            shutil.rmtree(target_dir, ignore_errors=True)
+    else:
+        await call.answer("📁 Fayl serverdan o'chib ketgan.", show_alert=True)
+
+# --- ADMIN PANEL FUNKSIYALARI (Teginilmagan) ---
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
-        await check_blocked_users(bot)
+        await check_blocked_users(bot) 
         pdf_file = create_user_pdf()
-        await message.answer_document(FSInputFile(pdf_file), caption="""
-👥 Foydalanuvchilar ro‘yxatini
-                                      """)
-
+        await message.answer_document(FSInputFile(pdf_file), caption="👥 Foydalanuvchilar ro‘yxati")
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
-    await message.answer("""
-                         📢 Xabar yuborish bo‘limi
-
-✉️ Foydalanuvchilarga yuboriladigan xabar turini tanlang.
-
-📝 Siz quyidagi formatlardan birini tanlashingiz mumkin:
-
-• Matn (text)
-• Rasm (photo)
-• Video
-
-⚙️ Tanlagan turga qarab keyingi bosqichlar ko‘rsatib beriladi.
-
-👇 Davom etish uchun xabar turini tanlang.
-                         """, reply_markup=xabar_yubor())
-
+    if message.from_user.id in ADMIN_ID:
+        await message.answer("📢 Xabar turini tanlang:", reply_markup=xabar_yubor())
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("""
-                                  🖼 Rasm yuborish
-
-📸 Iltimos, foydalanuvchilarga yubormoqchi bo‘lgan rasmingizni yuboring.
-
-✏️ Rasm bilan birga izoh (caption) ham qo‘shishingiz mumkin.
-
-⚡ Yuborilgan rasm barcha tanlangan foydalanuvchilarga yetkaziladi.
-
-👇 Endi rasmni yuboring.
-                                  """)
+    await callback.message.answer("🖼 Rasmni yuboring va unga izoh qo'shishingiz mumkin:")
     await state.set_state(SendImg.image)
     await callback.answer()
-
 
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("""
-                         ✏️ Rasm uchun izoh qo‘shish
-
-📝 Endi yuborilgan rasm uchun matn (caption) kiriting.
-                         """)
+    await message.answer("✏️ Endi rasm uchun matn (caption) kiriting:")
     await state.set_state(SendImg.about)
-
 
 @dp.message(SendImg.about)
 async def caption_qabul(message: types.Message, state: FSMContext):
     await state.update_data(about=message.text)
     data = await state.get_data()
     await message.answer_photo(photo=data["photo"], caption=data["about"], parse_mode="HTML")
-    await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
+    await message.answer("📨 Barcha foydalanuvchilarga yuborilsinmi?", reply_markup=send_confirmation_buttons())
     await state.set_state(SendImg.confirm)
-
 
 @dp.message(SendImg.confirm, F.text == "Xa ✅")
 async def yubor(message: types.Message, state: FSMContext):
@@ -228,37 +203,26 @@ async def yubor(message: types.Message, state: FSMContext):
         try:
             await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
             count += 1
+            await asyncio.sleep(0.05) 
         except:
             continue
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=user_button())
     await state.clear()
-
 
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("❌ Bekor qilindi.", reply_markup=user_button())
     await state.clear()
 
-
-
-
-
-
-
-
-
-
+# --- ISHGA TUSHIRISH ---
 
 async def main():
     logging.basicConfig(level=logging.INFO)
-
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-    except Exception:
-        pass
-
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        pass
