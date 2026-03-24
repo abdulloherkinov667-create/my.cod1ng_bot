@@ -28,7 +28,7 @@ from stets import SendImg
 
 
 
-API_TOKEN = "8054850246:AAFrie9TuamBBWYrEOzpu1E3jxuh1jFUPnw"
+API_TOKEN = "8054850246:AAGlgGkJ0VpGarnaf7wXrx1H_WPCh_R59wA"
 
 
 bot = Bot(token=API_TOKEN)
