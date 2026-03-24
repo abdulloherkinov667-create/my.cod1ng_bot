@@ -2,15 +2,14 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def userkorish_button():
-   keyboard = InlineKeyboardMarkup(
+    keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Userlarni PDF korsh 👥", callback_data="stats")]
         ]
     )
+    return keyboard
    
    
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-
 def xabar_yubor():
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -36,7 +35,8 @@ def yuborilmasin_sorov():
                 InlineKeyboardButton(text='Xa ✅', callback_data='yes')
             ],
             [
-                InlineKeyboardButton(text="Yo‘q ❌", callback_data='net')
+                InlineKeyboardButton(text="Yo'q ❌", callback_data='net')
             ]
         ]
-    ) 
+    )
+    return keyboard
