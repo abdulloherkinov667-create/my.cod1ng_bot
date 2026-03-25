@@ -23,7 +23,6 @@ dp = Dispatcher()
 
 ADMIN_ID = [6411347321, 8327989068]
 
-# Instagram link regex
 INSTAGRAM_URL_PATTERN = r'(https?://(?:www\.)?instagram\.com/[^\s]+)'
 
 # ================= START =================
@@ -40,18 +39,32 @@ async def start_command(message: types.Message):
     )
 
     if message.from_user.id in ADMIN_ID:
-        await message.answer("👑 Admin panelga xush kelibsiz!", reply_markup=user_button())
+        await message.answer(
+            "👑 *Admin panelga xush kelibsiz!*\n\n"
+            "⚙️ Kerakli bo‘limni tanlang 👇",
+            reply_markup=user_button(),
+            parse_mode="Markdown"
+        )
     else:
         await message.answer(
-            "🔥 Botga xush kelibsiz!\n\n📥 Instagram video yoki reel link yuboring — yuklab beraman!",
-            reply_markup=start_button()
+            "👋 *Salom! Xush kelibsiz!*\n\n"
+            "🎬 Instagram video yoki reel yuklab olish uchun:\n"
+            "1️⃣ Pastdagi tugmani bosing\n"
+            "2️⃣ Link yuboring\n\n"
+            "🚀 Qolganini men bajaraman 😉",
+            reply_markup=start_button(),
+            parse_mode="Markdown"
         )
 
-# ================= YANGI VIDEO YUKLASH =================
+# ================= VIDEO YUKLASH =================
 @dp.message(F.text.regexp(INSTAGRAM_URL_PATTERN))
 async def download_instagram(message: types.Message):
     url = message.text.strip()
-    msg = await message.answer("⏳ Yuklanmoqda...")
+    msg = await message.answer(
+        "⏳ *Video yuklab olinmoqda...*\n\n"
+        "📥 Iltimos, biroz kuting...",
+        parse_mode="Markdown"
+    )
 
     folder = f"downloads/{uuid.uuid4().hex[:6]}"
     os.makedirs(folder, exist_ok=True)
@@ -77,18 +90,36 @@ async def download_instagram(message: types.Message):
         video_path = await asyncio.to_thread(load_video)
 
         if os.path.exists(video_path):
-            await msg.edit_text("📤 Yuklandi, yuborilmoqda...")
+            await msg.edit_text(
+                "📤 *Video tayyor!*\n\n"
+                "🚀 Sizga yuborilmoqda...",
+                parse_mode="Markdown"
+            )
+
             await message.answer_video(
                 video=FSInputFile(video_path),
-                caption="✅ Tayyor!\n\n🚀 Bot orqali yuklandi"
+                caption=
+                "✅ *Muvaffaqiyatli yuklandi!*\n\n"
+                "🎬 Video tayyor 👌\n"
+                "📲 Yana yuklash uchun link yuboring",
+                parse_mode="Markdown"
             )
+
             await msg.delete()
         else:
             raise Exception("Video topilmadi")
 
     except Exception as e:
         logging.error(e)
-        await msg.edit_text("❌ Yuklab bo‘lmadi!\n\n🔒 Private profil yoki noto‘g‘ri link bo‘lishi mumkin.")
+        await msg.edit_text(
+            "❌ *Xatolik yuz berdi!*\n\n"
+            "🔒 Video yuklab bo‘lmadi.\n"
+            "Sababi:\n"
+            "• Profil yopiq bo‘lishi mumkin\n"
+            "• Link noto‘g‘ri bo‘lishi mumkin\n\n"
+            "🔁 Qayta urinib ko‘ring",
+            parse_mode="Markdown"
+        )
 
     finally:
         if os.path.exists(folder):
