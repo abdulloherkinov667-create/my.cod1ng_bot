@@ -104,7 +104,7 @@ async def start_command(message: types.Message):
 @dp.message(F.text == "🎬 Video yuklash")
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_link)
-    await message.answer("📸 Instagram video linkini yuboring:")
+    await message.answer("📸 Instagram video yoki reel linkini yuboring:")
 
 @dp.message(InstagramStates.waiting_for_link)
 async def download_instagram_video(message: types.Message, state: FSMContext):
@@ -118,49 +118,68 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
     
     loading_msg = await message.answer("📥 Video yuklanmoqda, iltimos kuting...")
     
+    # Create unique folder for this download
+    unique_id = str(uuid.uuid4())[:8]
+    download_folder = f"downloads/{unique_id}"
+    os.makedirs(download_folder, exist_ok=True)
+    
+    video_file = None
+    
     try:
-        # Generate unique filename
-        unique_id = str(uuid.uuid4())[:8]
-        output_template = f"downloads/{unique_id}_%(title)s.%(ext)s"
-        
-        # Create downloads directory if not exists
-        os.makedirs("downloads", exist_ok=True)
-        
-        # yt-dlp options with better Instagram support
+        # yt-dlp options optimized for Instagram
         ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            'outtmpl': output_template,
+            'format': 'bestvideo+bestaudio/best[ext=mp4]/best',
+            'outtmpl': f'{download_folder}/%(title)s.%(ext)s',
             'quiet': True,
             'no_warnings': True,
             'extract_flat': False,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'ignoreerrors': True,
+            'no_color': True,
+            'user_agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
             'headers': {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Accept-Language': 'en-us,en;q=0.5',
                 'Accept-Encoding': 'gzip, deflate',
                 'Connection': 'keep-alive',
+                'Sec-Fetch-Mode': 'navigate',
             },
             'retries': 10,
             'fragment_retries': 10,
-            'extract_flat': 'in_playlist',
-            'prefer_insecure': False,
+            'extractor_args': {'instagram': {'video': ['allow_unsupported_formats']}},
         }
         
         # Add cookies if available
         if has_cookies():
             ydl_opts['cookiefile'] = COOKIES_FILE
         
-        video_file = None
-        
+        # Download video
         with YoutubeDL(ydl_opts) as ydl:
             try:
-                # Download video
-                ydl.download([url])
+                # Extract info first
+                info = ydl.extract_info(url, download=False)
                 
-                # Find the actual downloaded file
-                downloaded_files = [f for f in os.listdir('downloads') if f.startswith(unique_id)]
+                if not info:
+                    raise Exception("Video ma'lumotlarini olish imkonsiz")
+                
+                # Check if it's a video or reel
+                if info.get('_type') == 'playlist' or 'entries' in info:
+                    # Handle reels or multiple videos
+                    entries = info.get('entries', [info])
+                    for entry in entries:
+                        if entry:
+                            # Download each video
+                            ydl.download([entry['webpage_url']])
+                else:
+                    # Single video
+                    ydl.download([url])
+                
+                # Find downloaded video file
+                downloaded_files = [f for f in os.listdir(download_folder) if f.endswith(('.mp4', '.mov', '.mkv'))]
+                
                 if downloaded_files:
-                    video_file = os.path.join('downloads', downloaded_files[0])
+                    # Get the largest file (should be the video)
+                    video_files = sorted(downloaded_files, key=lambda x: os.path.getsize(os.path.join(download_folder, x)), reverse=True)
+                    video_file = os.path.join(download_folder, video_files[0])
                 
                 if video_file and os.path.exists(video_file):
                     # Check file size
@@ -176,9 +195,11 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
                         with open(video_file, 'rb') as video:
                             await message.answer_video(
                                 video=types.BufferedInputFile(video.read(), filename=os.path.basename(video_file)),
-                                caption=f"✅ Video muvaffaqiyatli yuklandi!\n📊 Hajmi: {file_size_mb:.1f}MB",
+                                caption=f"✅ Video muvaffaqiyatli yuklandi!\n📊 Hajmi: {file_size_mb:.1f}MB\n🎬 Bot: @{bot.username}",
                                 reply_markup=markup
                             )
+                        await loading_msg.delete()
+                        await state.clear()
                     else:
                         # Video is too large, split it
                         await message.answer(f"⚠️ Video hajmi {file_size_mb:.1f}MB (Telegram cheklovi: 50MB).\n🔄 Videoni qismlarga bo'lib yuboryapman...")
@@ -186,15 +207,7 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
                         # Split video into parts
                         video_parts = split_video(video_file)
                         
-                        if len(video_parts) == 1:
-                            # Couldn't split, just send as is
-                            with open(video_file, 'rb') as video:
-                                await message.answer_video(
-                                    video=types.BufferedInputFile(video.read(), filename=os.path.basename(video_file)),
-                                    caption=f"⚠️ Video hajmi katta ({file_size_mb:.1f}MB). Telegram cheklovi tufayli yuborib bo'lmadi.",
-                                    reply_markup=markup
-                                )
-                        else:
+                        if len(video_parts) > 1:
                             # Send each part
                             for i, part_path in enumerate(video_parts, 1):
                                 part_size = os.path.getsize(part_path) / (1024 * 1024)
@@ -204,64 +217,77 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
                                         caption=f"📹 {i}/{len(video_parts)} qism | Hajmi: {part_size:.1f}MB"
                                     )
                                 # Clean up part file
-                                os.remove(part_path)
+                                if os.path.exists(part_path):
+                                    os.remove(part_path)
                             
                             # Send audio option for the full video
                             await message.answer(
                                 "🎵 Videodan audio ajratib olishni xohlaysizmi?",
                                 reply_markup=markup
                             )
-                    
-                    await loading_msg.delete()
-                    await state.clear()
+                            await loading_msg.delete()
+                            await state.clear()
+                        else:
+                            # Couldn't split, send as document
+                            with open(video_file, 'rb') as video:
+                                await message.answer_document(
+                                    document=types.BufferedInputFile(video.read(), filename=os.path.basename(video_file)),
+                                    caption=f"⚠️ Video hajmi katta ({file_size_mb:.1f}MB). Fayl sifatida yuborildi."
+                                )
+                            await loading_msg.delete()
+                            await state.clear()
                 else:
                     await loading_msg.delete()
                     await message.answer("❌ Video topilmadi. Iltimos, boshqa linkni sinab ko'ring.")
+                    await state.clear()
                     
             except Exception as e:
-                error_msg = str(e)
-                if "login required" in error_msg.lower() or "rate-limit" in error_msg.lower():
+                error_msg = str(e).lower()
+                
+                if "login required" in error_msg or "private" in error_msg:
                     await loading_msg.delete()
                     await message.answer(
-                        "⚠️ Instagram cheklovlari tufayli video yuklab bo'lmadi.\n\n"
-                        "🔧 Yechimlar:\n"
-                        "1. Bir necha daqiqadan so'ng qayta urinib ko'ring\n"
-                        "2. Boshqa Instagram linkini sinab ko'ring\n"
-                        "3. Agar muammo takrorlansa, admin bilan bog'laning\n\n"
-                        "📞 Admin: @your_admin_username"
+                        "⚠️ Bu video maxfiy (private) yoki faqat obunachilar uchun.\n\n"
+                        "🔧 Yechim:\n"
+                        "1. Agar video sizniki bo'lsa, uni public qiling\n"
+                        "2. Yoki botga cookie fayl qo'shing\n\n"
+                        "📞 Yordam: @your_admin_username"
+                    )
+                elif "rate-limit" in error_msg or "too many requests" in error_msg:
+                    await loading_msg.delete()
+                    await message.answer(
+                        "⚠️ Instagram so'rovlar chekloviga uchradi.\n"
+                        "Iltimos, 5-10 daqiqadan so'ng qayta urinib ko'ring."
+                    )
+                elif "not found" in error_msg or "404" in error_msg:
+                    await loading_msg.delete()
+                    await message.answer(
+                        "❌ Video topilmadi. Linkni tekshirib qayta urinib ko'ring."
                     )
                 else:
-                    raise e
+                    # Log the full error for debugging
+                    logging.error(f"Download error: {e}")
+                    await loading_msg.delete()
+                    await message.answer(
+                        f"❌ Video yuklashda xatolik:\n{str(e)[:150]}\n\n"
+                        "Iltimos, keyinroq qayta urinib ko'ring yoki admin bilan bog'lang."
+                    )
+                await state.clear()
                 
     except Exception as e:
         await loading_msg.delete()
-        error_message = str(e)
-        
-        # Check for specific errors
-        if "rate-limit" in error_message.lower():
-            await message.answer(
-                "⚠️ Instagram so'rovlar chekloviga uchradi.\n"
-                "Iltimos, 5-10 daqiqadan so'ng qayta urinib ko'ring."
-            )
-        elif "login required" in error_message.lower():
-            await message.answer(
-                "⚠️ Instagram autentifikatsiya talab qilmoqda.\n"
-                "Bu vaqtinchalik muammo. Iltimos, keyinroq qayta urinib ko'ring."
-            )
-        else:
-            await message.answer(f"❌ Xatolik: {error_message[:200]}\nIltimos, keyinroq qayta urinib ko'ring.")
-        
+        logging.error(f"General error: {e}")
+        await message.answer(
+            f"❌ Kutilmagan xatolik:\n{str(e)[:150]}\n\n"
+            "Iltimos, keyinroq qayta urinib ko'ring."
+        )
         await state.clear()
     
     finally:
         # Clean up downloaded files
         try:
-            if os.path.exists('downloads'):
-                for file in os.listdir('downloads'):
-                    if file.startswith(unique_id):
-                        file_path = os.path.join('downloads', file)
-                        if os.path.exists(file_path):
-                            os.remove(file_path)
+            if os.path.exists(download_folder):
+                shutil.rmtree(download_folder, ignore_errors=True)
         except Exception as e:
             print(f"Cleanup error: {e}")
 
@@ -286,12 +312,23 @@ async def extract_audio(callback: types.CallbackQuery):
             audio.write_audiofile(audio_filename, logger=None, verbose=False)
             video_clip.close()
             
-            # Send audio (no size limit check for audio)
-            with open(audio_filename, 'rb') as audio_file:
-                await callback.message.answer_audio(
-                    audio=types.BufferedInputFile(audio_file.read(), filename=audio_filename),
-                    caption="🎵 Audio muvaffaqiyatli yuklandi!"
-                )
+            # Check audio size
+            audio_size_mb = os.path.getsize(audio_filename) / (1024 * 1024)
+            
+            if audio_size_mb <= 50:
+                # Send audio
+                with open(audio_filename, 'rb') as audio_file:
+                    await callback.message.answer_audio(
+                        audio=types.BufferedInputFile(audio_file.read(), filename=audio_filename),
+                        caption="🎵 Audio muvaffaqiyatli yuklandi!"
+                    )
+            else:
+                # Send as document if too large
+                with open(audio_filename, 'rb') as audio_file:
+                    await callback.message.answer_document(
+                        document=types.BufferedInputFile(audio_file.read(), filename=audio_filename),
+                        caption=f"⚠️ Audio hajmi katta ({audio_size_mb:.1f}MB). Fayl sifatida yuborildi."
+                    )
             
             # Clean up audio file
             os.remove(audio_filename)
@@ -390,10 +427,12 @@ async def bekor(message: types.Message, state: FSMContext):
     await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
 
+
+
+
+
 async def main():
     logging.basicConfig(level=logging.INFO)
-    
-    # Create downloads directory
     os.makedirs("downloads", exist_ok=True)
     
     try:
