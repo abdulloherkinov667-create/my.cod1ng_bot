@@ -27,19 +27,25 @@ dp = Dispatcher()
 
 ADMIN_ID = [6411347321, 8327989068]
 
+# FSM states for Instagram download
 class InstagramStates(StatesGroup):
     waiting_for_link = State()
 
+# Cookies file path (create cookies.txt from browser)
 COOKIES_FILE = "cookies.txt"
 
+# Function to check if cookies file exists
 def has_cookies():
     return os.path.exists(COOKIES_FILE)
 
+# Function to split video into parts
 def split_video(video_path, max_size_mb=49):
+    """Split video into parts smaller than max_size_mb"""
     file_size = os.path.getsize(video_path) / (1024 * 1024)
     if file_size <= max_size_mb:
         return [video_path]
     
+    # Calculate number of parts needed
     num_parts = int(file_size / max_size_mb) + 1
     parts = []
     
@@ -85,7 +91,7 @@ async def start_command(message: types.Message):
         await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
     else:
         text = """
-👋 {message.from_user.user_name} Botga xush kelibsan!
+👋 Botga xush kelibsiz!
 
 😊 Botdan foydalanishni boshlash uchun pastda joylashgan tugmalardan birini tanlang.
 
@@ -105,8 +111,7 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
     url = message.text.strip()
     
     # Instagram link validation
-    instagram_pattern = ("instagram.com/p/", "instagram.com/reel/", "instagram.com/tv/", "instagram.com/stories/", "instagram.com/guide/", "instagram.com/username", "instagram.com/explore/", "instagram.com/saved/")
-    
+    instagram_pattern = r'(https?://)?(www\.)?(instagram\.com|instagr\.am)/.*'
     if not re.match(instagram_pattern, url):
         await message.answer("❌ Noto'g'ri link! Iltimos, Instagram linkini yuboring.")
         return
