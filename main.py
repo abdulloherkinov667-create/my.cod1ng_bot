@@ -105,13 +105,7 @@ async def download_instagram_video(message: types.Message, state: FSMContext):
     url = message.text.strip()
     
     # Instagram link validation
-    instagram_pattern = [
-        (r'instagram\.com/p/([a-zA-Z0-9_-]+)', 'p'),
-        (r'instagram\.com/reel/([a-zA-Z0-9_-]+)', 'reel'),
-        (r'instagram\.com/tv/([a-zA-Z0-9_-]+)', 'tv'),
-        (r'instagram\.com/stories/([a-zA-Z0-9_-]+)', 'stories'),
-        (r'instagram\.com/guide/([a-zA-Z0-9_-]+)', 'guide'),
-    ]
+    instagram_pattern = ("instagram.com/p/", "instagram.com/reel/", "instagram.com/tv/", "instagram.com/stories/", "instagram.com/guide/", "instagram.com/username", "instagram.com/explore/", "instagram.com/saved/")
     
     if not re.match(instagram_pattern, url):
         await message.answer("❌ Noto'g'ri link! Iltimos, Instagram linkini yuboring.")
