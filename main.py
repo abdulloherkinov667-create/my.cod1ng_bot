@@ -1,7 +1,6 @@
 ﻿import asyncio
 import logging
 import os
-import re
 import shutil
 import uuid
 from moviepy import VideoFileClip
@@ -9,10 +8,9 @@ from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
-# Tugmalar va database funksiyalari (Sizning fayllaringizdan)
+# Sizning tugmalaringiz va bazangiz (create.py va boshqalar bor deb hisoblaymiz)
 from buttons.defould import start_button, user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from buttons.inline import xabar_yubor
@@ -24,38 +22,9 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 ADMIN_ID = [6411347321, 8327989068]
-INSTAGRAM_PATTERN = r'(https?://)?(www\.)?(instagram\.com|instagr\.am)/(p|reels|reel|tv)/[\w-]+'
 
-class InstagramStates(StatesGroup):
-    waiting_for_link = State()
-
-def has_cookies():
-    return os.path.exists("cookies.txt")
-
-# Videoni qismlarga bo'lish funksiyasi
-def split_video(video_path, max_size_mb=45):
-    file_size = os.path.getsize(video_path) / (1024 * 1024)
-    if file_size <= max_size_mb:
-        return [video_path]
-    
-    parts = []
-    try:
-        video = VideoFileClip(video_path)
-        duration = video.duration
-        num_parts = int(file_size / max_size_mb) + 1
-        part_duration = duration / num_parts
-        
-        for i in range(num_parts):
-            start_time = i * part_duration
-            end_time = min((i + 1) * part_duration, duration)
-            part_filename = f"{video_path}_part{i+1}.mp4"
-            part_video = video.subclipped(start_time, end_time)
-            part_video.write_videofile(part_filename, codec='libx264', audio_codec='aac', logger=None)
-            parts.append(part_filename)
-        video.close()
-        return parts
-    except:
-        return [video_path]
+# Instagram linkini aniqlash uchun regex
+INSTAGRAM_URL_PATTERN = r'(https?://(?:www\.)?instagram\.com/(?:p|reel|reels|tv)/[\w-]+)'
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -71,56 +40,61 @@ async def start_command(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         await message.answer("👑 Admin panelga xush kelibsiz!", reply_markup=user_button())
     else:
-        await message.answer("👋 Xush kelibsiz! Instagram link yuboring yoki menyudan foydalaning.", reply_markup=start_button())
+        await message.answer("👋 Xush kelibsiz! Instagram linkini yuboring, men yuklab beraman.", reply_markup=start_button())
 
-@dp.message(F.text == "🎬 Video yuklash")
-async def start_video_download(message: types.Message, state: FSMContext):
-    await state.set_state(InstagramStates.waiting_for_link)
-    await message.answer("📸 Instagram linkini yuboring:")
-
-# Instagram linki kelganda (Xoh holatda bo'lsin, xoh menyudan kelgan bo'lsin)
-@dp.message(F.text.regexp(INSTAGRAM_PATTERN))
-async def handle_instagram_link(message: types.Message, state: FSMContext):
+# ASOSIY FUNKSIYA: Link kelishi bilan ishlaydi
+@dp.message(F.text.regexp(INSTAGRAM_URL_PATTERN))
+async def auto_download_instagram(message: types.Message):
     url = message.text.strip()
-    loading_msg = await message.answer("📥 Yuklanmoqda...")
+    status_msg = await message.answer("⏳ Video tahlil qilinmoqda...")
     
     unique_id = str(uuid.uuid4())[:8]
-    download_folder = f"downloads/{unique_id}"
-    os.makedirs(download_folder, exist_ok=True)
-
+    folder = f"downloads/{unique_id}"
+    os.makedirs(folder, exist_ok=True)
+    
+    # Instagram bloklarini aylanib o'tish uchun maxsus sozlamalar
     ydl_opts = {
         'format': 'best',
-        'outtmpl': f'{download_folder}/video.%(ext)s',
+        'outtmpl': f'{folder}/%(title)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': 'cookies.txt' if has_cookies() else None,
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Referer': 'https://www.instagram.com/',
+        },
+        'nocheckcertificate': True,
+        'ignoreerrors': False,
+        'geo_bypass': True,
     }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
+            # Video ma'lumotlarini olish va yuklash
             info = await asyncio.to_thread(ydl.extract_info, url, download=True)
-            video_file = ydl.prepare_filename(info)
-
-        if os.path.exists(video_file):
-            file_size_mb = os.path.getsize(video_file) / (1024 * 1024)
+            video_path = ydl.prepare_filename(info)
             
-            if file_size_mb <= 49:
-                await message.answer_video(video=FSInputFile(video_file), caption="✅ Tayyor!")
+            if os.path.exists(video_path):
+                await status_msg.edit_text("📤 Video botga yuklanmoqda...")
+                await message.answer_video(
+                    video=FSInputFile(video_path),
+                    caption=f"✅ Muvaffaqiyatli yuklandi!\n\n🔗 @{(await bot.get_me()).username}"
+                )
+                await status_msg.delete()
             else:
-                parts = split_video(video_file)
-                for part in parts:
-                    await message.answer_video(video=FSInputFile(part))
-                    if part != video_file: os.remove(part)
-            
-            await loading_msg.delete()
-    except:
-        await loading_msg.edit_text("⚠️ Videoni yuklab bo'lmadi. Linkni tekshiring.")
+                raise Exception("Fayl topilmadi")
+
+    except Exception as e:
+        logging.error(f"Xatolik: {e}")
+        await status_msg.edit_text("❌ Kechirasiz, videoni yuklab bo'lmadi.\nBu profil yopiq yoki link noto'g'ri bo'lishi mumkin.")
     
     finally:
-        shutil.rmtree(download_folder, ignore_errors=True)
-        await state.clear()
+        # Tozalash
+        if os.path.exists(folder):
+            shutil.rmtree(folder)
 
-# --- ADMIN QISMI (O'zgarishsiz) ---
+# --- ADMIN FUNKSIYALARI (Teginilmadi) ---
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
@@ -131,18 +105,17 @@ async def show_users(message: types.Message):
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
-    if message.from_user.id in ADMIN_ID:
-        await message.answer("Xabar turini tanlang:", reply_markup=xabar_yubor())
+    await message.answer("📢 Xabar turini tanlang.", reply_markup=xabar_yubor())
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("📸 Rasm yuboring:")
+    await callback.message.answer("🖼 Rasmni yuboring.")
     await state.set_state(SendImg.image)
 
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("📝 Izoh kiriting:")
+    await message.answer("📝 Izoh (caption) kiriting:")
     await state.set_state(SendImg.about)
 
 @dp.message(SendImg.about)
@@ -150,7 +123,7 @@ async def caption_qabul(message: types.Message, state: FSMContext):
     await state.update_data(about=message.text)
     data = await state.get_data()
     await message.answer_photo(photo=data["photo"], caption=data["about"])
-    await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
+    await message.answer("📨 Barcha userlarga yuborilsinmi?", reply_markup=send_confirmation_buttons())
     await state.set_state(SendImg.confirm)
 
 @dp.message(SendImg.confirm, F.text == "Xa ✅")
@@ -163,12 +136,12 @@ async def yubor(message: types.Message, state: FSMContext):
             await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
             count += 1
         except: continue
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=user_button())
+    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.")
     await state.clear()
 
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=user_button())
+    await message.answer("❌ Bekor qilindi.")
     await state.clear()
 
 async def main():
