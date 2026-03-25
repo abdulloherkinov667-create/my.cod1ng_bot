@@ -8,6 +8,13 @@ import threading
 import time
 from telebot import types
 from moviepy import VideoFileClip
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from datetime import datetime
+import sqlite3
 
 # Bot token
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
@@ -24,20 +31,149 @@ loader = instaloader.Instaloader(
     save_metadata=False
 )
 
-# Foydalanuvchilarni saqlash uchun (vaqtinchalik)
-users_data = {}
+# Ma'lumotlar bazasi
+DATABASE_NAME = 'users.db'
 
+def init_database():
+    """Ma'lumotlar bazasini yaratish"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
+            first_name TEXT,
+            username TEXT,
+            chat_id INTEGER,
+            joined_date TEXT,
+            is_blocked INTEGER DEFAULT 0
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+
+def insert_user(user_id, first_name, username, chat_id):
+    """Foydalanuvchini ma'lumotlar bazasiga qo'shish"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    try:
+        cursor.execute('''
+            INSERT OR REPLACE INTO users (user_id, first_name, username, chat_id, joined_date)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (user_id, first_name, username, chat_id, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        
+        conn.commit()
+    except Exception as e:
+        print(f"Xatolik: {e}")
+    finally:
+        conn.close()
+
+def get_all_users():
+    """Barcha foydalanuvchilarni olish"""
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute('SELECT * FROM users ORDER BY joined_date DESC')
+    users = cursor.fetchall()
+    
+    conn.close()
+    return users
+
+def create_user_pdf():
+    """Foydalanuvchilar ro'yxatini PDF faylga yozish"""
+    users = get_all_users()
+    
+    pdf_filename = f"users_list_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    doc = SimpleDocTemplate(pdf_filename, pagesize=A4)
+    styles = getSampleStyleSheet()
+    
+    # Qatorlar uchun ma'lumotlar
+    story = []
+    
+    # Sarlavha
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#1e3c72'),
+        spaceAfter=30,
+        alignment=1  # Center alignment
+    )
+    
+    title = Paragraph("👥 Foydalanuvchilar Ro'yxati", title_style)
+    story.append(title)
+    story.append(Spacer(1, 20))
+    
+    # Statistika
+    stats_text = f"""
+    <b>📊 Statistika:</b><br/>
+    • Jami foydalanuvchilar: {len(users)}<br/>
+    • Sana: {datetime.now().strftime('%d.%m.%Y %H:%M')}
+    """
+    
+    stats_style = ParagraphStyle(
+        'Stats',
+        parent=styles['Normal'],
+        fontSize=12,
+        textColor=colors.HexColor('#2c3e50'),
+        spaceAfter=20
+    )
+    
+    stats_paragraph = Paragraph(stats_text, stats_style)
+    story.append(stats_paragraph)
+    story.append(Spacer(1, 20))
+    
+    # Jadval sarlavhalari
+    data = [['#', 'ID', 'Ism', 'Username', 'Qo\'shilgan sana']]
+    
+    # Foydalanuvchilarni jadvalga qo'shish
+    for idx, user in enumerate(users, 1):
+        user_id = user[1]  # user_id
+        first_name = user[2] if user[2] else "❌"
+        username = f"@{user[3]}" if user[3] else "❌"
+        joined_date = user[5] if len(user) > 5 else "Noma'lum"
+        
+        data.append([str(idx), str(user_id), first_name, username, joined_date])
+    
+    # Jadval yaratish
+    table = Table(data, colWidths=[40, 80, 120, 120, 120])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3498db')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('FONTSIZE', (0, 1), (-1, -1), 10),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+    ]))
+    
+    story.append(table)
+    
+    # PDF yaratish
+    doc.build(story)
+    
+    return pdf_filename
+
+# Ma'lumotlar bazasini ishga tushirish
+init_database()
 
 # Start komandasi
 @bot.message_handler(commands=['start'])
 def start_command(message):
-    # Foydalanuvchini ro'yxatga olish
     user_id = message.from_user.id
-    users_data[user_id] = {
-        'first_name': message.from_user.first_name,
-        'username': message.from_user.username,
-        'chat_id': message.chat.id
-    }
+    first_name = message.from_user.first_name
+    username = message.from_user.username
+    chat_id = message.chat.id
+    
+    # Foydalanuvchini ma'lumotlar bazasiga qo'shish
+    insert_user(user_id, first_name, username, chat_id)
     
     if user_id in ADMIN_ID:
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -80,7 +216,7 @@ def get_instagram_video(message):
     url = message.text.strip()
     
     # URL validatsiyasi
-    if not url.startswith(('https://www.instagram.com/', 'https://instagram.com/')):
+    if not url.startswith(('https://www.instagram.com/', 'https://instagram.com/', 'https://www.instagram.com/', 'https://www.instagram.com/reel/')):
         bot.send_message(message.chat.id, "❌ Noto'g'ri link! Iltimos, Instagram video linkini yuboring.")
         return
     
@@ -113,7 +249,6 @@ def get_instagram_video(message):
                         break
             
             if video_file and os.path.exists(video_file):
-                # Audio olish uchun inline keyboard
                 markup = types.InlineKeyboardMarkup()
                 btn = types.InlineKeyboardButton(
                     text="🎵 Audioni yuklab olish", 
@@ -212,15 +347,16 @@ def get_audio(callback):
 def show_users(message):
     loading_msg = bot.send_message(message.chat.id, "⏳ PDF tayyorlanmoqda...")
     try:
-        # PDF yaratish funksiyasini chaqirish
-        # pdf_file = create_user_pdf()
-        # with open(pdf_file, 'rb') as pdf:
-        #     bot.send_document(message.chat.id, pdf, caption="👥 Foydalanuvchilar ro‘yxati")
-        # os.remove(pdf_file)
+        pdf_file = create_user_pdf()
+        with open(pdf_file, 'rb') as pdf:
+            bot.send_document(
+                message.chat.id, 
+                pdf, 
+                caption=f"👥 Foydalanuvchilar ro'yxati\n\n📊 Jami: {len(get_all_users())} ta foydalanuvchi"
+            )
         
-        # Vaqtinchalik PDF o'rniga userlar sonini ko'rsatish
-        user_count = len(users_data)
-        bot.send_message(message.chat.id, f"👥 Jami foydalanuvchilar soni: {user_count}")
+        # PDF faylni o'chirish
+        os.remove(pdf_file)
         
     except Exception as e:
         bot.send_message(message.chat.id, f"❌ Xatolik: {str(e)}")
@@ -280,8 +416,10 @@ def send_text_to_users(message):
 def get_photo_for_users(message):
     if message.photo:
         photo_id = message.photo[-1].file_id
+        caption = message.caption if message.caption else ""
+        
         markup = types.InlineKeyboardMarkup()
-        btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_photo|{photo_id}")
+        btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_photo|{photo_id}|{caption}")
         btn_no = types.InlineKeyboardButton("❌ Yo'q", callback_data="cancel_send")
         markup.add(btn_yes, btn_no)
         
@@ -296,8 +434,10 @@ def get_photo_for_users(message):
 def get_video_for_users(message):
     if message.video:
         video_id = message.video.file_id
+        caption = message.caption if message.caption else ""
+        
         markup = types.InlineKeyboardMarkup()
-        btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_video|{video_id}")
+        btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_video|{video_id}|{caption}")
         btn_no = types.InlineKeyboardButton("❌ Yo'q", callback_data="cancel_send")
         markup.add(btn_yes, btn_no)
         
@@ -314,21 +454,24 @@ def confirm_send_message(callback):
     data_parts = callback.data.split("|")
     msg_type = data_parts[0].replace("confirm_", "")
     content = data_parts[1] if len(data_parts) > 1 else None
+    caption = data_parts[2] if len(data_parts) > 2 else ""
     
     loading_msg = bot.send_message(callback.message.chat.id, "⏳ Xabarlar yuborilmoqda...")
     
+    users = get_all_users()
     count = 0
-    for user_id, user_data in users_data.items():
+    
+    for user in users:
         try:
             if msg_type == "text":
-                bot.send_message(user_data['chat_id'], content)
+                bot.send_message(user[4], content)  # user[4] = chat_id
             elif msg_type == "photo":
-                bot.send_photo(user_data['chat_id'], content)
+                bot.send_photo(user[4], content, caption=caption)
             elif msg_type == "video":
-                bot.send_video(user_data['chat_id'], content)
+                bot.send_video(user[4], content, caption=caption)
             count += 1
             time.sleep(0.1)  # Rate limit uchun
-        except Exception:
+        except Exception as e:
             continue
     
     bot.delete_message(callback.message.chat.id, loading_msg.message_id)
@@ -353,5 +496,8 @@ def handle_all_messages(message):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print("Bot ishga tushdi...")
+    print("🤖 Bot ishga tushdi...")
+    print("📊 Ma'lumotlar bazasi: users.db")
+    print("👑 Admin ID lar:", ADMIN_ID)
+    print("-" * 50)
     bot.polling(none_stop=True)
