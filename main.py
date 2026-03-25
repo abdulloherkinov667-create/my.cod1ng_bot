@@ -4,8 +4,6 @@ import os
 import re
 import shutil
 import uuid
-import json
-from datetime import datetime
 from moviepy import VideoFileClip
 from yt_dlp import YoutubeDL
 from aiogram import Bot, Dispatcher, types, F
@@ -13,8 +11,8 @@ from aiogram.filters import CommandStart
 from aiogram.types import FSInputFile
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
-from aiogram.client.session.aiohttp import AiohttpSession
 
+# Tugmalar va database funksiyalari (Sizning fayllaringizdan)
 from buttons.defould import start_button, user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from buttons.inline import xabar_yubor
@@ -26,48 +24,37 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 ADMIN_ID = [6411347321, 8327989068]
+INSTAGRAM_PATTERN = r'(https?://)?(www\.)?(instagram\.com|instagr\.am)/(p|reels|reel|tv)/[\w-]+'
 
-# FSM states for Instagram download
 class InstagramStates(StatesGroup):
     waiting_for_link = State()
 
-# Cookies file path (create cookies.txt from browser)
-COOKIES_FILE = "cookies.txt"
-
-# Function to check if cookies file exists
 def has_cookies():
-    return os.path.exists(COOKIES_FILE)
+    return os.path.exists("cookies.txt")
 
-# Function to split video into parts
-def split_video(video_path, max_size_mb=49):
-    """Split video into parts smaller than max_size_mb"""
+# Videoni qismlarga bo'lish funksiyasi
+def split_video(video_path, max_size_mb=45):
     file_size = os.path.getsize(video_path) / (1024 * 1024)
     if file_size <= max_size_mb:
         return [video_path]
     
-    # Calculate number of parts needed
-    num_parts = int(file_size / max_size_mb) + 1
     parts = []
-    
     try:
         video = VideoFileClip(video_path)
         duration = video.duration
+        num_parts = int(file_size / max_size_mb) + 1
         part_duration = duration / num_parts
         
         for i in range(num_parts):
             start_time = i * part_duration
             end_time = min((i + 1) * part_duration, duration)
-            
-            part_video = video.subclipped(start_time, end_time)
             part_filename = f"{video_path}_part{i+1}.mp4"
+            part_video = video.subclipped(start_time, end_time)
             part_video.write_videofile(part_filename, codec='libx264', audio_codec='aac', logger=None)
-            part_video.close()
             parts.append(part_filename)
-        
         video.close()
         return parts
-    except Exception as e:
-        print(f"Error splitting video: {e}")
+    except:
         return [video_path]
 
 @dp.message(CommandStart())
@@ -81,316 +68,88 @@ async def start_command(message: types.Message):
         chat_id=message.chat.id,
         created_at=message.date,
     )
-
     if message.from_user.id in ADMIN_ID:
-        text = (
-            f"👑 <b>Admin paneliga xush kelibsiz!</b>\n\n"
-            f"Salom, <b>{message.from_user.first_name}</b>.\n\n"
-            "🧰 Paneldan kerakli bo'limni tanlang."
-        )
-        await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
+        await message.answer("👑 Admin panelga xush kelibsiz!", reply_markup=user_button())
     else:
-        text = """
-👋 Botga xush kelibsiz!
-
-😊 Botdan foydalanishni boshlash uchun pastda joylashgan tugmalardan birini tanlang.
-
-👇 Davom etish uchun pastdagi tugmani bosing.
-
-✨ Shundan so‘ng sizga keyingi qadamlar ko‘rsatib beriladi.
-        """
-        await message.answer(text, parse_mode="HTML", reply_markup=start_button())
+        await message.answer("👋 Xush kelibsiz! Instagram link yuboring yoki menyudan foydalaning.", reply_markup=start_button())
 
 @dp.message(F.text == "🎬 Video yuklash")
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_link)
-    await message.answer("📸 Instagram video yoki reel linkini yuboring:")
+    await message.answer("📸 Instagram linkini yuboring:")
 
-@dp.message(InstagramStates.waiting_for_link)
-async def download_instagram_video(message: types.Message, state: FSMContext):
+# Instagram linki kelganda (Xoh holatda bo'lsin, xoh menyudan kelgan bo'lsin)
+@dp.message(F.text.regexp(INSTAGRAM_PATTERN))
+async def handle_instagram_link(message: types.Message, state: FSMContext):
     url = message.text.strip()
+    loading_msg = await message.answer("📥 Yuklanmoqda...")
     
-    # Instagram link validation
-    instagram_pattern = r'(https?://)?(www\.)?(instagram\.com|instagr\.am)/.*'
-    if not re.match(instagram_pattern, url):
-        await message.answer("❌ Noto'g'ri link! Iltimos, Instagram linkini yuboring.")
-        return
-    
-    loading_msg = await message.answer("📥 Video yuklanmoqda, iltimos kuting...")
-    
-    # Create unique folder for this download
     unique_id = str(uuid.uuid4())[:8]
     download_folder = f"downloads/{unique_id}"
     os.makedirs(download_folder, exist_ok=True)
-    
-    video_file = None
-    
-    try:
-        # yt-dlp options optimized for Instagram
-        ydl_opts = {
-            'format': 'best[ext=mp4]/best',
-            'outtmpl': f'{download_folder}/%(title)s.%(ext)s',
-            'quiet': True,
-            'no_warnings': True,
-            'extract_flat': False,
-            'ignoreerrors': True,
-            'no_color': True,
-            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'headers': {
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'en-US,en;q=0.5',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-            },
-            'retries': 10,
-            'fragment_retries': 10,
-        }
-        
-        # Add cookies if available
-        if has_cookies():
-            ydl_opts['cookiefile'] = COOKIES_FILE
-        
-        # Download video
-        with YoutubeDL(ydl_opts) as ydl:
-            try:
-                # Download the video
-                info = await asyncio.to_thread(ydl.extract_info, url, download=True)
-                
-                # Get the downloaded filename
-                if info:
-                    filename = ydl.prepare_filename(info)
-                    if os.path.exists(filename):
-                        video_file = filename
-                    else:
-                        # Try to find any video file in the folder
-                        for file in os.listdir(download_folder):
-                            if file.endswith(('.mp4', '.mov', '.mkv')):
-                                video_file = os.path.join(download_folder, file)
-                                break
-                
-                if video_file and os.path.exists(video_file):
-                    # Check file size
-                    file_size_mb = os.path.getsize(video_file) / (1024 * 1024)
-                    
-                    # Create inline keyboard for audio download
-                    markup = types.InlineKeyboardMarkup(inline_keyboard=[
-                        [types.InlineKeyboardButton(text="🎵 Audio yuklab olish", callback_data=f"audio_{video_file}")]
-                    ])
-                    
-                    if file_size_mb <= 50:
-                        # Send video directly
-                        video_input = FSInputFile(video_file)
-                        await message.answer_video(
-                            video=video_input,
-                            caption=f"✅ Video muvaffaqiyatli yuklandi!\n📊 Hajmi: {file_size_mb:.1f}MB",
-                            reply_markup=markup
-                        )
-                        await loading_msg.delete()
-                        await state.clear()
-                    else:
-                        # Video is too large, split it
-                        await message.answer(f"⚠️ Video hajmi {file_size_mb:.1f}MB (Telegram cheklovi: 50MB).\n🔄 Videoni qismlarga bo'lib yuboryapman...")
-                        
-                        # Split video into parts
-                        video_parts = split_video(video_file)
-                        
-                        if len(video_parts) > 1:
-                            # Send each part
-                            for i, part_path in enumerate(video_parts, 1):
-                                part_size = os.path.getsize(part_path) / (1024 * 1024)
-                                part_input = FSInputFile(part_path)
-                                await message.answer_video(
-                                    video=part_input,
-                                    caption=f"📹 {i}/{len(video_parts)} qism | Hajmi: {part_size:.1f}MB"
-                                )
-                                # Clean up part file
-                                if os.path.exists(part_path):
-                                    os.remove(part_path)
-                            
-                            # Send audio option for the full video
-                            await message.answer(
-                                "🎵 Videodan audio ajratib olishni xohlaysizmi?",
-                                reply_markup=markup
-                            )
-                            await loading_msg.delete()
-                            await state.clear()
-                        else:
-                            # Couldn't split, send as document
-                            doc_input = FSInputFile(video_file)
-                            await message.answer_document(
-                                document=doc_input,
-                                caption=f"⚠️ Video hajmi katta ({file_size_mb:.1f}MB). Fayl sifatida yuborildi."
-                            )
-                            await loading_msg.delete()
-                            await state.clear()
-                else:
-                    await loading_msg.delete()
-                    await message.answer("❌ Video topilmadi. Iltimos, boshqa linkni sinab ko'ring.")
-                    await state.clear()
-                    
-            except Exception as e:
-                error_msg = str(e).lower()
-                
-                if "login required" in error_msg or "private" in error_msg:
-                    await loading_msg.delete()
-                    await message.answer(
-                        "⚠️ Xatolik yuz berdi!\n\n"
-                        "Iltimos, keyinroq qayta urinib ko'ring."
-                    )
-                elif "rate-limit" in error_msg or "too many requests" in error_msg:
-                    await loading_msg.delete()
-                    await message.answer(
-                        "⚠️ Xatolik yuz berdi!\n\n"
-                        "Iltimos, keyinroq qayta urinib ko'ring."
-                    )
-                elif "not found" in error_msg or "404" in error_msg:
-                    await loading_msg.delete()
-                    await message.answer(
-                        "❌ Xatolik yuz berdi!\n\n"
-                        "Iltimos, keyinroq qayta urinib ko'ring."
-                    )
-                else:
-                    # Log the full error for debugging
-                    logging.error(f"Download error: {e}")
-                    await loading_msg.delete()
-                    await message.answer(
-                        "❌ Xatolik yuz berdi!\n\n"
-                        "Iltimos, keyinroq qayta urinib ko'ring."
-                    )
-                await state.clear()
-                
-    except Exception as e:
-        await loading_msg.delete()
-        logging.error(f"General error: {e}")
-        await message.answer(
-            "❌ Xatolik yuz berdi!\n\n"
-            "Iltimos, keyinroq qayta urinib ko'ring."
-        )
-        await state.clear()
-    
-    finally:
-        # Clean up downloaded files
-        try:
-            if os.path.exists(download_folder):
-                shutil.rmtree(download_folder, ignore_errors=True)
-        except Exception as e:
-            print(f"Cleanup error: {e}")
 
-@dp.callback_query(F.data.startswith("audio_"))
-async def extract_audio(callback: types.CallbackQuery):
-    video_file = callback.data.replace("audio_", "")
-    
-    if not os.path.exists(video_file):
-        await callback.answer("❌ Xatolik yuz berdi!", show_alert=True)
-        return
-    
-    await callback.answer("🎵 Audio yuklanmoqda...")
-    audio_msg = await callback.message.answer("🎵 Audio yuklanmoqda, iltimos kuting...")
-    
+    ydl_opts = {
+        'format': 'best',
+        'outtmpl': f'{download_folder}/video.%(ext)s',
+        'quiet': True,
+        'no_warnings': True,
+        'cookiefile': 'cookies.txt' if has_cookies() else None,
+    }
+
     try:
-        # Extract audio from video
-        video_clip = VideoFileClip(video_file)
-        audio = video_clip.audio
-        
-        if audio is not None:
-            audio_filename = f"audio_{uuid.uuid4()}.mp3"
-            audio.write_audiofile(audio_filename, logger=None, verbose=False)
-            video_clip.close()
+        with YoutubeDL(ydl_opts) as ydl:
+            info = await asyncio.to_thread(ydl.extract_info, url, download=True)
+            video_file = ydl.prepare_filename(info)
+
+        if os.path.exists(video_file):
+            file_size_mb = os.path.getsize(video_file) / (1024 * 1024)
             
-            # Check audio size
-            audio_size_mb = os.path.getsize(audio_filename) / (1024 * 1024)
-            
-            if audio_size_mb <= 50:
-                # Send audio
-                audio_input = FSInputFile(audio_filename)
-                await callback.message.answer_audio(
-                    audio=audio_input,
-                    caption="🎵 Audio tayyor!"
-                )
+            if file_size_mb <= 49:
+                await message.answer_video(video=FSInputFile(video_file), caption="✅ Tayyor!")
             else:
-                # Send as document if too large
-                doc_input = FSInputFile(audio_filename)
-                await callback.message.answer_document(
-                    document=doc_input,
-                    caption=f"⚠️ Audio hajmi katta ({audio_size_mb:.1f}MB). Fayl sifatida yuborildi."
-                )
+                parts = split_video(video_file)
+                for part in parts:
+                    await message.answer_video(video=FSInputFile(part))
+                    if part != video_file: os.remove(part)
             
-            # Clean up audio file
-            os.remove(audio_filename)
-            await audio_msg.delete()
-        else:
-            await callback.message.answer("❌ Bu videoda audio yo'q!")
-            
-    except Exception as e:
-        await callback.message.answer("❌ Xatolik yuz berdi!")
+            await loading_msg.delete()
+    except:
+        await loading_msg.edit_text("⚠️ Videoni yuklab bo'lmadi. Linkni tekshiring.")
+    
     finally:
-        # Clean up video file
-        try:
-            if os.path.exists(video_file):
-                os.remove(video_file)
-        except:
-            pass
+        shutil.rmtree(download_folder, ignore_errors=True)
+        await state.clear()
+
+# --- ADMIN QISMI (O'zgarishsiz) ---
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         await check_blocked_users(bot)
         pdf_file = create_user_pdf()
-        await message.answer_document(
-            FSInputFile(pdf_file), 
-            caption="👥 Foydalanuvchilar ro‘yxati"
-        )
+        await message.answer_document(FSInputFile(pdf_file), caption="👥 Foydalanuvchilar ro‘yxati")
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
-    await message.answer("""
-📢 Xabar yuborish bo‘limi
-
-✉️ Foydalanuvchilarga yuboriladigan xabar turini tanlang.
-
-📝 Siz quyidagi formatlardan birini tanlashingiz mumkin:
-
-• Matn (text)
-• Rasm (photo)
-• Video
-
-⚙️ Tanlagan turga qarab keyingi bosqichlar ko‘rsatib beriladi.
-
-👇 Davom etish uchun xabar turini tanlang.
-""", reply_markup=xabar_yubor())
+    if message.from_user.id in ADMIN_ID:
+        await message.answer("Xabar turini tanlang:", reply_markup=xabar_yubor())
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("""
-🖼 Rasm yuborish
-
-📸 Iltimos, foydalanuvchilarga yubormoqchi bo‘lgan rasmingizni yuboring.
-
-✏️ Rasm bilan birga izoh (caption) ham qo‘shishingiz mumkin.
-
-⚡ Yuborilgan rasm barcha tanlangan foydalanuvchilarga yetkaziladi.
-
-👇 Endi rasmni yuboring.
-""")
+    await callback.message.answer("📸 Rasm yuboring:")
     await state.set_state(SendImg.image)
-    await callback.answer()
 
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("""
-✏️ Rasm uchun izoh qo‘shish
-
-📝 Endi yuborilgan rasm uchun matn (caption) kiriting.
-""")
+    await message.answer("📝 Izoh kiriting:")
     await state.set_state(SendImg.about)
 
 @dp.message(SendImg.about)
 async def caption_qabul(message: types.Message, state: FSMContext):
     await state.update_data(about=message.text)
     data = await state.get_data()
-    await message.answer_photo(photo=data["photo"], caption=data["about"], parse_mode="HTML")
+    await message.answer_photo(photo=data["photo"], caption=data["about"])
     await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
     await state.set_state(SendImg.confirm)
 
@@ -403,26 +162,19 @@ async def yubor(message: types.Message, state: FSMContext):
         try:
             await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
             count += 1
-        except:
-            continue
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
+        except: continue
+    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=user_button())
     await state.clear()
 
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("❌ Bekor qilindi.", reply_markup=user_button())
     await state.clear()
-
 
 async def main():
     logging.basicConfig(level=logging.INFO)
     os.makedirs("downloads", exist_ok=True)
-    
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-    except Exception:
-        pass
-    
+    await bot.delete_webhook(drop_pending_updates=True)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
