@@ -1,31 +1,17 @@
-﻿import asyncio
-import logging
+﻿import telebot
+import instaloader
 import os
 import shutil
 import uuid
-from typing import Optional
-
-import instaloader
+import logging
+import threading
+import time
+from telebot import types
 from moviepy import VideoFileClip
-from yt_dlp import YoutubeDL
 
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import CommandStart
-from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.context import FSMContext
-from aiogram.client.session.aiohttp import AiohttpSession
-
-from buttons.defould import start_button, user_button, send_confirmation_buttons
-from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
-from buttons.inline import xabar_yubor
-from stets import SendImg
-
+# Bot token
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-
-# Bot va dispatcher
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+bot = telebot.TeleBot(API_TOKEN)
 
 ADMIN_ID = [6411347321, 8327989068]
 
@@ -38,32 +24,38 @@ loader = instaloader.Instaloader(
     save_metadata=False
 )
 
-
-# States
-class VideoStates(StatesGroup):
-    waiting_for_url = State()
+# Foydalanuvchilarni saqlash uchun (vaqtinchalik)
+users_data = {}
 
 
-@dp.message(CommandStart())
-async def start_command(message: types.Message):
-    await users_table()
-    insert_user(
-        first_name=message.from_user.first_name,
-        username=message.from_user.username,
-        language_code=message.from_user.language_code,
-        is_bot=message.from_user.is_bot,
-        chat_id=message.chat.id,
-        created_at=message.date,
-    )
-
-    if message.from_user.id in ADMIN_ID:
+# Start komandasi
+@bot.message_handler(commands=['start'])
+def start_command(message):
+    # Foydalanuvchini ro'yxatga olish
+    user_id = message.from_user.id
+    users_data[user_id] = {
+        'first_name': message.from_user.first_name,
+        'username': message.from_user.username,
+        'chat_id': message.chat.id
+    }
+    
+    if user_id in ADMIN_ID:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        btn1 = types.KeyboardButton("Userlarni PDF korsh 👥")
+        btn2 = types.KeyboardButton("Xabar yuborish 📨")
+        markup.add(btn1, btn2)
+        
         text = (
             f"👑 <b>Admin paneliga xush kelibsiz!</b>\n\n"
             f"Salom, <b>{message.from_user.first_name}</b>.\n\n"
             "🧰 Paneldan kerakli bo'limni tanlang."
         )
-        await message.answer(text, reply_markup=user_button(), parse_mode="HTML")
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
     else:
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        btn1 = types.KeyboardButton("🎬 Video yuklash")
+        markup.add(btn1)
+        
         text = """
 👋 Botga xush kelibsiz!
 
@@ -73,22 +65,23 @@ async def start_command(message: types.Message):
 
 ✨ Shundan so‘ng sizga keyingi qadamlar ko‘rsatib beriladi.
         """
-        await message.answer(text, parse_mode="HTML", reply_markup=start_button())
+        bot.send_message(message.chat.id, text, reply_markup=markup, parse_mode="HTML")
 
 
-@dp.message(F.text == "🎬 Video yuklash")
-async def start_video_download(message: types.Message, state: FSMContext):
-    await state.set_state(VideoStates.waiting_for_url)
-    await message.answer("📥 Instagram video linkini yuboring:")
+# Video yuklash tugmasi
+@bot.message_handler(func=lambda message: message.text == "🎬 Video yuklash")
+def start_video_download(message):
+    msg = bot.send_message(message.chat.id, "📥 Instagram video linkini yuboring:")
+    bot.register_next_step_handler(msg, get_instagram_video)
 
 
-@dp.message(VideoStates.waiting_for_url)
-async def get_instagram_video(message: types.Message, state: FSMContext):
+# Instagram videoni yuklab olish
+def get_instagram_video(message):
     url = message.text.strip()
     
     # URL validatsiyasi
     if not url.startswith(('https://www.instagram.com/', 'https://instagram.com/')):
-        await message.answer("❌ Noto'g'ri link! Iltimos, Instagram video linkini yuboring.")
+        bot.send_message(message.chat.id, "❌ Noto'g'ri link! Iltimos, Instagram video linkini yuboring.")
         return
     
     try:
@@ -98,13 +91,13 @@ async def get_instagram_video(message: types.Message, state: FSMContext):
         elif '/reel/' in url:
             shortcode = url.split('/reel/')[1].split('/')[0]
         else:
-            await message.answer("❌ Link noto'g'ri formatda!")
+            bot.send_message(message.chat.id, "❌ Link noto'g'ri formatda!")
             return
         
         folder_name = shortcode
         
         # Yuklab olish jarayoni haqida xabar
-        loading_msg = await message.answer("⏳ Video yuklanmoqda, iltimos kuting...")
+        loading_msg = bot.send_message(message.chat.id, "⏳ Video yuklanmoqda, iltimos kuting...")
         
         try:
             # Postni yuklab olish
@@ -113,265 +106,252 @@ async def get_instagram_video(message: types.Message, state: FSMContext):
             
             # Video faylni topish
             video_file = None
-            for file in os.listdir(folder_name):
-                if file.endswith(".mp4"):
-                    video_file = os.path.join(folder_name, file)
-                    break
+            if os.path.exists(folder_name):
+                for file in os.listdir(folder_name):
+                    if file.endswith(".mp4"):
+                        video_file = os.path.join(folder_name, file)
+                        break
             
             if video_file and os.path.exists(video_file):
                 # Audio olish uchun inline keyboard
-                markup = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="🎵 Audioni yuklab olish", callback_data=f"get_audio:{video_file}:{folder_name}")]
-                    ]
+                markup = types.InlineKeyboardMarkup()
+                btn = types.InlineKeyboardButton(
+                    text="🎵 Audioni yuklab olish", 
+                    callback_data=f"get_audio|{video_file}|{folder_name}"
                 )
+                markup.add(btn)
                 
                 # Videoni yuborish
                 with open(video_file, 'rb') as video:
-                    await message.answer_video(
-                        video=types.BufferedInputFile(video.read(), filename=f"instagram_{shortcode}.mp4"),
+                    bot.send_video(
+                        message.chat.id, 
+                        video, 
                         caption="✅ Video tayyor!",
                         reply_markup=markup
                     )
                 
-                # Yuklab olish papkasini keyinroq tozalash uchun saqlaymiz
-                # (callback orqali tozalanadi)
+                # Yuklab olish papkasini keyinroq tozalash
+                def cleanup():
+                    time.sleep(5)
+                    if os.path.exists(folder_name):
+                        shutil.rmtree(folder_name, ignore_errors=True)
+                
+                threading.Thread(target=cleanup).start()
                 
             else:
-                await message.answer("❌ Video topilmadi!")
-                
-            # Yuklanish papkasini tozalash (video yuborilgandan keyin)
-            if os.path.exists(folder_name):
-                shutil.rmtree(folder_name, ignore_errors=True)
+                bot.send_message(message.chat.id, "❌ Video topilmadi!")
+                if os.path.exists(folder_name):
+                    shutil.rmtree(folder_name, ignore_errors=True)
                 
         except Exception as e:
-            await message.answer(f"❌ Xatolik: {str(e)}")
+            bot.send_message(message.chat.id, f"❌ Xatolik: {str(e)}")
             if os.path.exists(folder_name):
                 shutil.rmtree(folder_name, ignore_errors=True)
                 
         finally:
-            await loading_msg.delete()
+            bot.delete_message(message.chat.id, loading_msg.message_id)
             
     except Exception as e:
-        await message.answer(f"❌ Xatolik yuz berdi: {str(e)}")
-    
-    await state.clear()
+        bot.send_message(message.chat.id, f"❌ Xatolik yuz berdi: {str(e)}")
 
 
-@dp.callback_query(F.data.startswith("get_audio:"))
-async def get_audio(callback: types.CallbackQuery):
-    data_parts = callback.data.split(":", 2)
-    if len(data_parts) < 3:
-        await callback.answer("Xatolik yuz berdi!")
-        return
-        
-    video_file = data_parts[1]
-    folder_name = data_parts[2]
-    
-    loading_msg = await callback.message.answer("🎵 Audio yuklanmoqda, iltimos kuting...")
-    
+# Callback query handler (audio olish uchun)
+@bot.callback_query_handler(func=lambda call: call.data.startswith("get_audio|"))
+def get_audio(callback):
     try:
-        # Videodan audio ajratish
-        video = VideoFileClip(video_file)
-        audio = video.audio
-        
-        if audio is not None:
-            audio_name = f"{uuid.uuid4()}.mp3"
-            audio.write_audiofile(audio_name, logger=None)
-            video.close()
+        data_parts = callback.data.split("|")
+        if len(data_parts) < 3:
+            bot.answer_callback_query(callback.id, "Xatolik yuz berdi!")
+            return
             
-            # Audioni yuborish
-            with open(audio_name, 'rb') as audio_file:
-                await callback.message.answer_audio(
-                    audio=types.BufferedInputFile(audio_file.read(), filename=audio_name),
-                    caption="🎵 Audio tayyor!"
-                )
-                
-            os.remove(audio_name)
-        else:
-            await callback.message.answer("❌ Bu videoda audio yo'q!")
-            
-    except Exception as e:
-        await callback.message.answer(f"❌ Audio yuklashda xatolik: {str(e)}")
-    finally:
-        await loading_msg.delete()
+        video_file = data_parts[1]
+        folder_name = data_parts[2]
         
-        # Papkani tozalash
-        if os.path.exists(folder_name):
-            shutil.rmtree(folder_name, ignore_errors=True)
-    
-    await callback.answer()
-
-
-@dp.message(F.text == "Userlarni PDF korsh 👥")
-async def show_users(message: types.Message):
-    if message.from_user.id in ADMIN_ID:
-        loading_msg = await message.answer("⏳ PDF tayyorlanmoqda...")
+        loading_msg = bot.send_message(callback.message.chat.id, "🎵 Audio yuklanmoqda, iltimos kuting...")
+        
         try:
-            await check_blocked_users(bot)
-            pdf_file = create_user_pdf()
-            await message.answer_document(
-                FSInputFile(pdf_file), 
-                caption="👥 Foydalanuvchilar ro‘yxati"
-            )
+            # Videodan audio ajratish
+            video = VideoFileClip(video_file)
+            audio = video.audio
+            
+            if audio is not None:
+                audio_name = f"{uuid.uuid4()}.mp3"
+                audio.write_audiofile(audio_name, logger=None)
+                video.close()
+                
+                # Audioni yuborish
+                with open(audio_name, 'rb') as audio_file:
+                    bot.send_audio(
+                        callback.message.chat.id, 
+                        audio_file,
+                        caption="🎵 Audio tayyor!"
+                    )
+                    
+                os.remove(audio_name)
+                bot.answer_callback_query(callback.id, "✅ Audio tayyor!")
+            else:
+                bot.send_message(callback.message.chat.id, "❌ Bu videoda audio yo'q!")
+                bot.answer_callback_query(callback.id, "Audio topilmadi")
+                
         except Exception as e:
-            await message.answer(f"❌ Xatolik: {str(e)}")
+            bot.send_message(callback.message.chat.id, f"❌ Audio yuklashda xatolik: {str(e)}")
+            bot.answer_callback_query(callback.id, "Xatolik yuz berdi")
         finally:
-            await loading_msg.delete()
-    else:
-        await message.answer("⛔ Bu buyruq faqat adminlar uchun!")
+            bot.delete_message(callback.message.chat.id, loading_msg.message_id)
+            
+            # Papkani tozalash
+            if os.path.exists(folder_name):
+                shutil.rmtree(folder_name, ignore_errors=True)
+                
+    except Exception as e:
+        bot.answer_callback_query(callback.id, f"Xatolik: {str(e)}")
 
 
-@dp.message(F.text == "Xabar yuborish 📨")
-async def xabar_yuborish_boshlash(message: types.Message):
-    if message.from_user.id in ADMIN_ID:
-        await message.answer("""
+# Admin: Userlarni PDF ko'rish
+@bot.message_handler(func=lambda message: message.text == "Userlarni PDF korsh 👥" and message.from_user.id in ADMIN_ID)
+def show_users(message):
+    loading_msg = bot.send_message(message.chat.id, "⏳ PDF tayyorlanmoqda...")
+    try:
+        # PDF yaratish funksiyasini chaqirish
+        # pdf_file = create_user_pdf()
+        # with open(pdf_file, 'rb') as pdf:
+        #     bot.send_document(message.chat.id, pdf, caption="👥 Foydalanuvchilar ro‘yxati")
+        # os.remove(pdf_file)
+        
+        # Vaqtinchalik PDF o'rniga userlar sonini ko'rsatish
+        user_count = len(users_data)
+        bot.send_message(message.chat.id, f"👥 Jami foydalanuvchilar soni: {user_count}")
+        
+    except Exception as e:
+        bot.send_message(message.chat.id, f"❌ Xatolik: {str(e)}")
+    finally:
+        bot.delete_message(message.chat.id, loading_msg.message_id)
+
+
+# Admin: Xabar yuborish bo'limi
+@bot.message_handler(func=lambda message: message.text == "Xabar yuborish 📨" and message.from_user.id in ADMIN_ID)
+def xabar_yuborish_boshlash(message):
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn1 = types.InlineKeyboardButton("📝 Matn", callback_data="send_text")
+    btn2 = types.InlineKeyboardButton("🖼 Rasm", callback_data="send_photo")
+    btn3 = types.InlineKeyboardButton("🎬 Video", callback_data="send_video")
+    markup.add(btn1, btn2, btn3)
+    
+    bot.send_message(message.chat.id, """
 📢 Xabar yuborish bo‘limi
 
 ✉️ Foydalanuvchilarga yuboriladigan xabar turini tanlang.
 
-📝 Siz quyidagi formatlardan birini tanlashingiz mumkin:
-
-• Matn (text)
-• Rasm (photo)
-• Video
-
-⚙️ Tanlagan turga qarab keyingi bosqichlar ko‘rsatib beriladi.
-
 👇 Davom etish uchun xabar turini tanlang.
-        """, reply_markup=xabar_yubor())
+    """, reply_markup=markup)
+
+
+# Admin: Xabar turini tanlash
+@bot.callback_query_handler(func=lambda call: call.data in ["send_text", "send_photo", "send_video"])
+def choose_message_type(callback):
+    if callback.data == "send_text":
+        msg = bot.send_message(callback.message.chat.id, "📝 Yubormoqchi bo'lgan matningizni yozing:")
+        bot.register_next_step_handler(msg, send_text_to_users)
+        
+    elif callback.data == "send_photo":
+        msg = bot.send_message(callback.message.chat.id, "🖼 Yubormoqchi bo'lgan rasmingizni yuboring:")
+        bot.register_next_step_handler(msg, get_photo_for_users)
+        
+    elif callback.data == "send_video":
+        msg = bot.send_message(callback.message.chat.id, "🎬 Yubormoqchi bo'lgan videongizni yuboring:")
+        bot.register_next_step_handler(msg, get_video_for_users)
+    
+    bot.answer_callback_query(callback.id)
+    bot.delete_message(callback.message.chat.id, callback.message.message_id)
+
+
+# Matn xabar yuborish
+def send_text_to_users(message):
+    text = message.text
+    markup = types.InlineKeyboardMarkup()
+    btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_text|{text}")
+    btn_no = types.InlineKeyboardButton("❌ Yo'q", callback_data="cancel_send")
+    markup.add(btn_yes, btn_no)
+    
+    bot.send_message(message.chat.id, f"📨 Yuboriladigan matn:\n\n{text}\n\nYuborilsinmi?", reply_markup=markup)
+
+
+# Rasm xabar yuborish
+def get_photo_for_users(message):
+    if message.photo:
+        photo_id = message.photo[-1].file_id
+        markup = types.InlineKeyboardMarkup()
+        btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_photo|{photo_id}")
+        btn_no = types.InlineKeyboardButton("❌ Yo'q", callback_data="cancel_send")
+        markup.add(btn_yes, btn_no)
+        
+        bot.send_photo(message.chat.id, photo_id, caption="📨 Yuboriladigan rasm\n\nYuborilsinmi?", reply_markup=markup)
     else:
-        await message.answer("⛔ Bu buyruq faqat adminlar uchun!")
+        bot.send_message(message.chat.id, "❌ Iltimos, rasm yuboring!")
+        msg = bot.send_message(message.chat.id, "🖼 Yubormoqchi bo'lgan rasmingizni yuboring:")
+        bot.register_next_step_handler(msg, get_photo_for_users)
 
 
-@dp.callback_query(F.data == "img")
-async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("""
-🖼 Rasm yuborish
-
-📸 Iltimos, foydalanuvchilarga yubormoqchi bo‘lgan rasmingizni yuboring.
-
-✏️ Rasm bilan birga izoh (caption) ham qo‘shishingiz mumkin.
-
-⚡ Yuborilgan rasm barcha tanlangan foydalanuvchilarga yetkaziladi.
-
-👇 Endi rasmni yuboring.
-    """)
-    await state.set_state(SendImg.image)
-    await callback.answer()
-
-
-@dp.message(SendImg.image, F.photo)
-async def rasm_qabul(message: types.Message, state: FSMContext):
-    await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("""
-✏️ Rasm uchun izoh qo‘shish
-
-📝 Endi yuborilgan rasm uchun matn (caption) kiriting.
-    """)
-    await state.set_state(SendImg.about)
+# Video xabar yuborish
+def get_video_for_users(message):
+    if message.video:
+        video_id = message.video.file_id
+        markup = types.InlineKeyboardMarkup()
+        btn_yes = types.InlineKeyboardButton("✅ Ha", callback_data=f"confirm_video|{video_id}")
+        btn_no = types.InlineKeyboardButton("❌ Yo'q", callback_data="cancel_send")
+        markup.add(btn_yes, btn_no)
+        
+        bot.send_video(message.chat.id, video_id, caption="📨 Yuboriladigan video\n\nYuborilsinmi?", reply_markup=markup)
+    else:
+        bot.send_message(message.chat.id, "❌ Iltimos, video yuboring!")
+        msg = bot.send_message(message.chat.id, "🎬 Yubormoqchi bo'lgan videongizni yuboring:")
+        bot.register_next_step_handler(msg, get_video_for_users)
 
 
-@dp.message(SendImg.about, F.text)
-async def caption_qabul(message: types.Message, state: FSMContext):
-    await state.update_data(about=message.text)
-    data = await state.get_data()
-    await message.answer_photo(
-        photo=data["photo"], 
-        caption=data["about"], 
-        parse_mode="HTML"
-    )
-    await message.answer("📨 Yuborilsinmi?", reply_markup=send_confirmation_buttons())
-    await state.set_state(SendImg.confirm)
-
-
-@dp.message(SendImg.confirm, F.text == "Xa ✅")
-async def yubor(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    users = get_all_users()
+# Xabarni tasdiqlash
+@bot.callback_query_handler(func=lambda call: call.data.startswith("confirm_"))
+def confirm_send_message(callback):
+    data_parts = callback.data.split("|")
+    msg_type = data_parts[0].replace("confirm_", "")
+    content = data_parts[1] if len(data_parts) > 1 else None
+    
+    loading_msg = bot.send_message(callback.message.chat.id, "⏳ Xabarlar yuborilmoqda...")
+    
     count = 0
-    
-    loading_msg = await message.answer("⏳ Xabarlar yuborilmoqda...")
-    
-    for user in users:
+    for user_id, user_data in users_data.items():
         try:
-            await bot.send_photo(
-                chat_id=user[3],  # chat_id
-                photo=data["photo"], 
-                caption=data["about"]
-            )
+            if msg_type == "text":
+                bot.send_message(user_data['chat_id'], content)
+            elif msg_type == "photo":
+                bot.send_photo(user_data['chat_id'], content)
+            elif msg_type == "video":
+                bot.send_video(user_data['chat_id'], content)
             count += 1
-            await asyncio.sleep(0.1)  # Rate limit uchun
+            time.sleep(0.1)  # Rate limit uchun
         except Exception:
             continue
     
-    await loading_msg.delete()
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
-    await state.clear()
+    bot.delete_message(callback.message.chat.id, loading_msg.message_id)
+    bot.send_message(callback.message.chat.id, f"✅ {count} ta foydalanuvchiga yuborildi.")
+    bot.answer_callback_query(callback.id)
+    bot.delete_message(callback.message.chat.id, callback.message.message_id)
 
 
-@dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
-async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
-    await state.clear()
+# Bekor qilish
+@bot.callback_query_handler(func=lambda call: call.data == "cancel_send")
+def cancel_send(callback):
+    bot.send_message(callback.message.chat.id, "❌ Bekor qilindi.")
+    bot.answer_callback_query(callback.id)
+    bot.delete_message(callback.message.chat.id, callback.message.message_id)
 
 
-# Matn xabar yuborish uchun (agar kerak bo'lsa)
-@dp.callback_query(F.data == "text")
-async def text_xabar_boshlash(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("📝 Yubormoqchi bo'lgan matningizni yozing:")
-    await state.set_state(SendImg.text_message)
-    await callback.answer()
-
-
-@dp.message(SendImg.text_message, F.text)
-async def text_xabar_qabul(message: types.Message, state: FSMContext):
-    await state.update_data(text_message=message.text)
-    await message.answer(f"📨 Yuboriladigan matn:\n\n{message.text}\n\nYuborilsinmi?", 
-                        reply_markup=send_confirmation_buttons())
-    await state.set_state(SendImg.confirm_text)
-
-
-@dp.message(SendImg.confirm_text, F.text == "Xa ✅")
-async def text_xabar_yubor(message: types.Message, state: FSMContext):
-    data = await state.get_data()
-    users = get_all_users()
-    count = 0
-    
-    loading_msg = await message.answer("⏳ Xabarlar yuborilmoqda...")
-    
-    for user in users:
-        try:
-            await bot.send_message(
-                chat_id=user[3],
-                text=data["text_message"]
-            )
-            count += 1
-            await asyncio.sleep(0.1)
-        except Exception:
-            continue
-    
-    await loading_msg.delete()
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.", reply_markup=types.ReplyKeyboardRemove())
-    await state.clear()
-
-
-@dp.message(SendImg.confirm_text, F.text == "Yo‘q ❌")
-async def text_xabar_bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.", reply_markup=types.ReplyKeyboardRemove())
-    await state.clear()
-
-
-async def main():
-    logging.basicConfig(level=logging.INFO)
-    
-    try:
-        await bot.delete_webhook(drop_pending_updates=True)
-    except Exception as e:
-        logging.error(f"Webhook delete error: {e}")
-    
-    await dp.start_polling(bot)
+# Barcha xatolarni ushlash
+@bot.message_handler(func=lambda message: True)
+def handle_all_messages(message):
+    bot.send_message(message.chat.id, "⚠️ Iltimos, tugmalardan foydalaning!")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    logging.basicConfig(level=logging.INFO)
+    print("Bot ishga tushdi...")
+    bot.polling(none_stop=True)
