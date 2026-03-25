@@ -16,7 +16,7 @@ from create import insert_user, users_table, create_user_pdf, get_all_users, che
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
-API_TOKEN = "TOKENINGNI_OZING_QOY"
+API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
