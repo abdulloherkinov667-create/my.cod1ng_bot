@@ -20,7 +20,7 @@ from aiogram.fsm.context import FSMContext
 
 # Sizning fayllaringizdan import
 from buttons.defould import start_button, user_button, send_confirmation_buttons
-from create import insert_user, users_table, create_user_pdf, get_all_users, get_users_count, check_blocked_users
+from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
