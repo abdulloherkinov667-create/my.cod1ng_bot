@@ -81,68 +81,84 @@ async def start_command(message: types.Message):
     else:
         await message.answer("👋 Botga xush kelibsiz! Video yuklash uchun tugmani bosing.", reply_markup=start_button())
 
+
 @dp.message(F.text == "🎬 Video yuklash")
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_link)
     await message.answer("📸 Instagram video yoki reel linkini yuboring:")
 
+
 @dp.message(InstagramStates.waiting_for_link)
 async def download_instagram_video(message: types.Message, state: FSMContext):
     url = message.text.strip()
+
     if "instagram.com" not in url and "instagr.am" not in url:
         await message.answer("❌ Bu Instagram linki emas!")
         return
 
     loading_msg = await message.answer("📥 Yuklanmoqda... (Instagram biroz vaqt olishi mumkin)")
+
     unique_id = str(uuid.uuid4())[:8]
     download_folder = f"downloads/{unique_id}"
     os.makedirs(download_folder, exist_ok=True)
 
     ydl_opts = {
         'format': 'best',
-        'outtmpl': f'{download_folder}/video.%(ext)s',
+        'outtmpl': f'{download_folder}/%(title)s.%(ext)s',  # 🔥 FIX
         'quiet': True,
         'no_warnings': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'retries': 10,
+        'user_agent': 'Mozilla/5.0',
     }
-    
+
     if has_cookies():
         ydl_opts['cookiefile'] = COOKIES_FILE
 
     try:
+        # 🔥 ENG ASOSIY FIX (extract_info o‘rniga download)
         with YoutubeDL(ydl_opts) as ydl:
-            info = await asyncio.to_thread(ydl.extract_info, url, download=True)
-            filename = ydl.prepare_filename(info)
+            await asyncio.to_thread(ydl.download, [url])
 
-        if os.path.exists(filename):
-            file_size_mb = os.path.getsize(filename) / (1024 * 1024)
-            
-            # Audio tugmasi (callback uchun fayl yo'lini vaqtinchalik saqlaymiz)
-            # Lekin xavfsizlik uchun audio olish funksiyasini yuklab bo'lgach chaqirish yaxshi
+        # 🔥 FILE TOPISH (MUHIM)
+        files = os.listdir(download_folder)
+        video_file = None
+
+        for f in files:
+            if f.endswith(('.mp4', '.mkv', '.webm', '.mov')):
+                video_file = os.path.join(download_folder, f)
+                break
+
+        if video_file and os.path.exists(video_file):
+            file_size_mb = os.path.getsize(video_file) / (1024 * 1024)
+
             markup = types.InlineKeyboardMarkup(inline_keyboard=[
                 [types.InlineKeyboardButton(text="🎵 Audio (MP3)", callback_data=f"audio_{unique_id}")]
             ])
 
             if file_size_mb <= 49:
-                video_file = FSInputFile(filename)
-                await message.answer_video(video=video_file, caption=f"✅ Yuklandi! @{bot.username}", reply_markup=markup)
+                await message.answer_video(
+                    video=FSInputFile(video_file),
+                    caption=f"✅ Yuklandi! @{bot.username}",
+                    reply_markup=markup
+                )
             else:
                 await message.answer("⚠️ Video katta, qismlarga bo'linmoqda...")
-                parts = split_video(filename)
+
+                parts = split_video(video_file)
                 for p in parts:
                     await message.answer_video(video=FSInputFile(p))
-                    if p != filename: os.remove(p) # Qismlarni o'chirish
-            
+                    if p != video_file:
+                        os.remove(p)
+
             await loading_msg.delete()
-            # DIQQAT: Faylni o'chirmaymiz agar audio tugmasi ishlatilsa. 
-            # Lekin disk to'lmasligi uchun 10 daqiqadan keyin o'chirishni rejalashtirish mumkin.
+
         else:
             await loading_msg.edit_text("❌ Video yuklab bo'lmadi.")
 
     except Exception as e:
         logging.error(f"Xatolik: {e}")
-        await loading_msg.edit_text(f"❌ Xatolik yuz berdi: {str(e)[:100]}")
-    
+        await loading_msg.edit_text(f"❌ Xatolik: {str(e)[:100]}")
+
     await state.clear()
 
 # --- ADMIN FUNKSIYALARI ---
