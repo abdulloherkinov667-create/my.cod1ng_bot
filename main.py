@@ -79,17 +79,6 @@ async def start_video_download(message: types.Message, state: FSMContext):
 
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
-
-    # 🔥 ENG MUHIM FIX (STATE DAN CHIQISH)
-    if message.text in [
-        "🎬 Video yuklash",
-        "👥 User soni ko‘rish",
-        "Userlarni PDF korsh 👥",
-        "Xabar yuborish 📨"
-    ]:
-        await state.clear()
-        return
-
     url = message.text.strip()
 
     if not ("instagram.com" in url and "/reel/" in url):
