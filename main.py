@@ -112,6 +112,12 @@ async def download_reel(message: types.Message, state: FSMContext):
 
         video = FSInputFile(filename)
         await message.answer_video(video)
+        await message.answer("""
+                            🎬 Video muvaffaqiyatli yuklandi!
+
+📌 Ushbu video @my_cod1ngbot orqali yuklab berildi
+🚀 Biz bilan tez va oson yuklang! 
+                            """)
 
     except Exception:
         await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
