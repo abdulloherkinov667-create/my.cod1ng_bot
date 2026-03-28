@@ -54,10 +54,13 @@ async def start_command(message: types.Message):
             parse_mode="Markdown"
         )
     else:
-        await message.answer(
-            "👋 *Salom! Xush kelibsiz!*\n\n"
-            "🎬 Instagram REELS videolarni yuklab beruvchi botga xush kelibsiz!\n\n"
-            "👇 Pastdagi tugmalardan birini tanlang va davom eting",
+        await message.answer("""
+                            Salom! 👋 @my_cod1ngbot ga xush kelibsiz
+
+😊 Bu yerda sizni oddiy, lekin foydali bir narsa kutmoqda.  
+🧐 Faqat bir qadamni bosish kifoya…  
+👇 Pastdagi tugmani bosing va o‘zingiz kashf eting. 
+                            """,
             reply_markup=start_button(),
             parse_mode="Markdown"
         )
