@@ -82,7 +82,7 @@ async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
     # Faqat reels linkni tekshiramiz
-    if "instagram.com/reel" not in url:
+    if "instagram.com/reel" in url and "instagram.com/" in url:
         await message.answer("❌ Iltimos faqat Instagram REELS link yuboring!")
         return
 
@@ -101,19 +101,16 @@ async def download_reel(message: types.Message, state: FSMContext):
 
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-
-        # Foydalanuvchiga yuboramiz
-        video = FSInputFile(filename)
-        await message.answer_video(video)
+            video = FSInputFile(filename)
+            await message.answer_video(video)
 
     except Exception:
-        # Juda ko‘p xatolik yozmaymiz
         await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
 
     finally:
-        # Faylni o‘chiramiz
         if os.path.exists(filename):
             os.remove(filename)
+            
 # ================= ADMIN PANEL (TEGINILMAGAN) =================
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
