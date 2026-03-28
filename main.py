@@ -80,43 +80,38 @@ async def start_video_download(message: types.Message, state: FSMContext):
         "⏳ Video avtomatik yuklab beriladi"
     )
 
-
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
+    # 🔥 TO‘G‘IRLANGAN TEKSHIRUV
     if not ("instagram.com" in url and "/reel/" in url):
         await message.answer("❌ Faqat Instagram REELS link yuboring!")
         return
+
+    import os
+    import uuid
+    from yt_dlp import YoutubeDL
+    from aiogram.types import FSInputFile
 
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp4"
 
     ydl_opts = {
-        "outtmpl": filename,
-        "format": "mp4",
-        "quiet": True,
-        "noplaylist": True,
+        'outtmpl': filename,
+        'format': 'mp4',
+        'quiet': True,
+        'noplaylist': True
     }
 
     try:
         await message.answer("⏳ Video yuklanmoqda...")
+
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
         video = FSInputFile(filename)
-        await message.answer_video(
-            video,
-            caption="""
-                    ✨ Videongiz tayyor!
-
-                    📌 @my_cod1ngbot orqali yuklab berildi
-                    ⚡ Tezlik va sifat — barchasi bir joyda, bir bosish — ming imkoniyat
-
-                    👇 Yana video yuklab ko‘ring!
-                    """,
-            parse_mode="Markdown"
-        )
+        await message.answer_video(video)
 
     except Exception:
         await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
@@ -124,8 +119,6 @@ async def download_reel(message: types.Message, state: FSMContext):
     finally:
         if os.path.exists(filename):
             os.remove(filename)
-        await state.clear()
-
 
 # ================= ADMIN =================
 
