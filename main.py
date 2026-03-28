@@ -18,14 +18,7 @@ from create import insert_user, users_table, create_user_pdf, get_all_users, che
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
-# Instagram loader sozlamalari
-loader = instaloader.Instaloader(
-    download_comments=False,
-    download_geotags=False,
-    download_pictures=False,
-    download_video_thumbnails=False,
-    save_metadata=False
-)
+
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 ADMIN_ID = [6411347321, 8327989068]
@@ -51,45 +44,51 @@ async def start_command(message: types.Message):
 
     if message.from_user.id in ADMIN_ID:
         await message.answer(
-            "👑 *Admin panelga xush kelibsiz!*\n\n⚙️ Kerakli bo‘limni tanlang 👇",
+            "👑 *Admin panelga xush kelibsiz!*\n\n"
+            "⚙️ Kerakli bo‘limni tanlang 👇\n\n"
+            "📊 Statistikalar\n"
+            "📨 Xabar yuborish\n"
+            "👥 Foydalanuvchilar ro‘yxati",
             reply_markup=user_button(),
             parse_mode="Markdown"
         )
     else:
         await message.answer(
-            "👋 *Salom! Xush kelibsiz!*",
+            "👋 *Salom! Xush kelibsiz!*\n\n"
+            "🎬 Instagram REELS videolarni yuklab beruvchi botga xush kelibsiz!\n\n"
+            "👇 Pastdagi tugmalardan birini tanlang va davom eting",
             reply_markup=start_button(),
             parse_mode="Markdown"
         )
 
-# ================= VIDEO YUKLASH QISMI =================
+# ================= VIDEO YUKLASH =================
 
 @dp.message(F.text == "🎬 Video yuklash")
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_reel)
     await message.answer(
-        "🎬 REELS YUKLASH\n\n"
-        "📎 Reels linkini yuboring:\n"
+        "🎬 *REELS YUKLASH XIZMATI*\n\n"
+        "📎 Instagram reels linkini yuboring:\n"
         "━━━━━━━━━━━━━━━\n"
-        "✅ Faqat Instagram REELS\n"
-        "🚫 Post / Story ishlamaydi\n"
+        "✅ Faqat REELS ishlaydi\n"
+        "🚫 Post / Story qo‘llab-quvvatlanmaydi\n"
         "━━━━━━━━━━━━━━━\n\n"
-        "⏳ Video avtomatik yuklab beriladi"
+        "⚡ Video tez va avtomatik yuklab beriladi",
+        parse_mode="Markdown"
     )
 
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
-    # 🔥 TO‘G‘IRLANGAN TEKSHIRUV
     if not ("instagram.com" in url and "/reel/" in url):
-        await message.answer("❌ Faqat Instagram REELS link yuboring!")
+        await message.answer(
+            "❌ *Noto‘g‘ri link!*\n\n"
+            "📎 Iltimos, faqat Instagram REELS link yuboring.\n"
+            "🔗 Masalan: instagram.com/reel/...",
+            parse_mode="Markdown"
+        )
         return
-
-    import os
-    import uuid
-    from yt_dlp import YoutubeDL
-    from aiogram.types import FSInputFile
 
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp4"
@@ -102,50 +101,83 @@ async def download_reel(message: types.Message, state: FSMContext):
     }
 
     try:
-        await message.answer("⏳ Video yuklanmoqda...")
+        await message.answer("⏳ *Video yuklanmoqda...*\n\n📥 Iltimos biroz kuting", parse_mode="Markdown")
 
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
         video = FSInputFile(filename)
-        await message.answer_video(video)
+
+        # 🔥 VIDEO TAGIGA TEXT QO‘SHILDI
+        await message.answer_video(
+            video,
+            caption="🎬 *Yuklab olindi!*\n\n"
+                    "🤖 Bot: @SENING_BOTING_NOMI\n"
+                    "⚡ Tez va oson yuklab berildi",
+            parse_mode="Markdown"
+        )
 
     except Exception:
-        await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
+        await message.answer(
+            "⚠️ *Yuklashda muammo yuz berdi*\n\n"
+            "🔁 Boshqa reels link yuborib ko‘ring",
+            parse_mode="Markdown"
+        )
 
     finally:
         if os.path.exists(filename):
-            os.remove(filename)            
-# ================= ADMIN PANEL (TEGINILMAGAN) =================
+            os.remove(filename)
+
+# ================= ADMIN =================
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
     if message.from_user.id in ADMIN_ID:
         await check_blocked_users(bot)
         pdf_file = create_user_pdf()
-        await message.answer_document(FSInputFile(pdf_file), caption="👥 Foydalanuvchilar ro‘yxati")
+        await message.answer_document(
+            FSInputFile(pdf_file),
+            caption="👥 *Foydalanuvchilar ro‘yxati tayyor!*",
+            parse_mode="Markdown"
+        )
 
 @dp.message(F.text == "Xabar yuborish 📨")
 async def xabar_yuborish_boshlash(message: types.Message):
-    await message.answer("📢 Xabar turini tanlang.", reply_markup=xabar_yubor())
+    await message.answer(
+        "📨 *Xabar yuborish bo‘limi*\n\n"
+        "👇 Xabar turini tanlang",
+        reply_markup=xabar_yubor(),
+        parse_mode="Markdown"
+    )
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.answer("🖼 Rasmni yuboring.")
+    await callback.message.answer("🖼 *Rasmni yuboring*", parse_mode="Markdown")
     await state.set_state(SendImg.image)
 
 @dp.message(SendImg.image, F.photo)
 async def rasm_qabul(message: types.Message, state: FSMContext):
     await state.update_data(photo=message.photo[-1].file_id)
-    await message.answer("📝 Izoh kiriting:")
+    await message.answer("📝 *Rasm uchun izoh kiriting:*", parse_mode="Markdown")
     await state.set_state(SendImg.about)
 
 @dp.message(SendImg.about)
 async def caption_qabul(message: types.Message, state: FSMContext):
     await state.update_data(about=message.text)
     data = await state.get_data()
-    await message.answer_photo(photo=data["photo"], caption=data["about"])
-    await message.answer("📨 Barcha userlarga yuborilsinmi?", reply_markup=send_confirmation_buttons())
+
+    await message.answer_photo(
+        photo=data["photo"],
+        caption=f"📝 *Ko‘rinishi:*\n\n{data['about']}",
+        parse_mode="Markdown"
+    )
+
+    await message.answer(
+        "📨 *Barcha foydalanuvchilarga yuborilsinmi?*",
+        reply_markup=send_confirmation_buttons(),
+        parse_mode="Markdown"
+    )
+
     await state.set_state(SendImg.confirm)
 
 @dp.message(SendImg.confirm, F.text == "Xa ✅")
@@ -153,20 +185,45 @@ async def yubor(message: types.Message, state: FSMContext):
     data = await state.get_data()
     users = get_all_users()
     count = 0
+
     for user in users:
         try:
-            await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
+            await bot.send_photo(
+                chat_id=user[3],
+                photo=data["photo"],
+                caption=data["about"]
+            )
             count += 1
-        except: continue
-    await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.")
+        except:
+            continue
+
+    await message.answer(
+        f"✅ *Yuborildi!*\n\n📨 {count} ta foydalanuvchiga yetkazildi",
+        parse_mode="Markdown"
+    )
+
     await state.clear()
 
 @dp.message(SendImg.confirm, F.text == "Yo‘q ❌")
 async def bekor(message: types.Message, state: FSMContext):
-    await message.answer("❌ Bekor qilindi.")
+    await message.answer("❌ *Yuborish bekor qilindi*", parse_mode="Markdown")
     await state.clear()
+    
+    
+@dp.message(F.text == "👥 User soni ko‘rish")
+async def user_count(message: types.Message):
+    if message.from_user.id in ADMIN_ID:
+        users = get_all_users()
+        count = len(users)
 
-# ================= RUN =================
+        await message.answer(
+            f"👥 *Foydalanuvchilar soni*\n\n"
+            f"📊 Jami userlar: *{count} ta*\n\n"
+            f"🚀 Bot faol ishlamoqda",
+            parse_mode="Markdown"
+        )
+    
+    
 async def main():
     logging.basicConfig(level=logging.INFO)
     os.makedirs("downloads", exist_ok=True)
