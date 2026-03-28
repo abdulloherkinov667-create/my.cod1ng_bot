@@ -148,3 +148,11 @@ def create_user_pdf():
     pdf.build([table])
     return file_name
 
+
+def setup_db():
+    conn = sqlite3.connect("kinobaza.db")
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS movies (code TEXT PRIMARY KEY, file_id text)")
+    conn.commit()
+    conn.close()
+

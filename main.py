@@ -3,27 +3,39 @@ import logging
 import os
 import shutil
 import uuid
-from yt_dlp import YoutubeDL
+import instaloader
+from moviepy import VideoFileClip
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import CommandStart
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
-# Sizning mavjud fayllar
+# Mavjud fayllar
 from buttons.defould import start_button, user_button, send_confirmation_buttons
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
+# Instagram loader sozlamalari
+loader = instaloader.Instaloader(
+    download_comments=False,
+    download_geotags=False,
+    download_pictures=False,
+    download_video_thumbnails=False,
+    save_metadata=False
+)
+
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
+ADMIN_ID = [6411347321, 8327989068]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
-ADMIN_ID = [6411347321, 8327989068]
-
-INSTAGRAM_URL_PATTERN = r'(https?://(?:www\.)?instagram\.com/[^\s]+)'
+# Holatlarni belgilash
+class DownloadState(StatesGroup):
+    waiting_for_link = State()
 
 # ================= START =================
 @dp.message(CommandStart())
@@ -40,92 +52,100 @@ async def start_command(message: types.Message):
 
     if message.from_user.id in ADMIN_ID:
         await message.answer(
-            "👑 *Admin panelga xush kelibsiz!*\n\n"
-            "⚙️ Kerakli bo‘limni tanlang 👇",
+            "👑 *Admin panelga xush kelibsiz!*\n\n⚙️ Kerakli bo‘limni tanlang 👇",
             reply_markup=user_button(),
             parse_mode="Markdown"
         )
     else:
         await message.answer(
-            "👋 *Salom! Xush kelibsiz!*\n\n"
-            "🎬 Instagram video yoki reel yuklab olish uchun:\n"
-            "1️⃣ Pastdagi tugmani bosing\n"
-            "2️⃣ Link yuboring\n\n"
-            "🚀 Qolganini men bajaraman 😉",
+            "👋 *Salom! Xush kelibsiz!*",
             reply_markup=start_button(),
             parse_mode="Markdown"
         )
 
-# ================= VIDEO YUKLASH =================
-@dp.message(F.text.regexp(INSTAGRAM_URL_PATTERN))
-async def download_instagram(message: types.Message):
+# ================= VIDEO YUKLASH QISMI =================
+
+@dp.message(F.text == "🎬 Video yuklash")
+async def ask_for_link(message: types.Message, state: FSMContext):
+    await message.answer("🔗 Instagram video linkini yuboring:")
+    await state.set_state(DownloadState.waiting_for_link)
+
+@dp.message(DownloadState.waiting_for_link)
+async def process_instagram_link(message: types.Message, state: FSMContext):
     url = message.text.strip()
-    msg = await message.answer(
-        "⏳ *Video yuklab olinmoqda...*\n\n"
-        "📥 Iltimos, biroz kuting...",
-        parse_mode="Markdown"
-    )
+    
+    if "instagram.com" not in url:
+        await message.answer("❌ Bu haqiqiy Instagram linki emas. Iltimos qaytadan yuboring.")
+        return
 
-    folder = f"downloads/{uuid.uuid4().hex[:6]}"
-    os.makedirs(folder, exist_ok=True)
+    loader_msg = await message.answer("⏳ Video yuklanmoqda, iltimos kuting...")
+    
+    try:
+        # Shortcode ajratib olish
+        shortcode = url.split("/")[-2] if url.endswith("/") else url.split("/")[-1]
+        if "?" in shortcode: shortcode = shortcode.split("?")[0]
 
-    ydl_opts = {
-        'format': 'mp4',
-        'outtmpl': f'{folder}/%(title)s.%(ext)s',
-        'quiet': True,
-        'nocheckcertificate': True,
-        'ignoreerrors': False,
-        'geo_bypass': True,
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0',
-        },
-    }
+        # Papka yaratish (uuid bilan xavfsizroq)
+        folder_name = f"downloads/{uuid.uuid4()}"
+        
+        # Yuklash (Sinxron funksiyani asinxron ishlatish)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, lambda: loader.download_post(instaloader.Post.from_shortcode(loader.context, shortcode), target=folder_name))
+
+        video_file = None
+        for file in os.listdir(folder_name):
+            if file.endswith(".mp4"):
+                video_file = os.path.join(folder_name, file)
+                break
+
+        if video_file:
+            # Audio tugmasi
+            markup = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🎵 Audioni yuklab olish", callback_data=f"getaudio_{video_file}")]
+            ])
+            
+            video_input = FSInputFile(video_file)
+            await bot.send_video(message.chat.id, video_input, reply_markup=markup)
+            await loader_msg.delete()
+        else:
+            await message.answer("😔 Video topilmadi.")
+            shutil.rmtree(folder_name, ignore_errors=True)
+            
+    except Exception as e:
+        await message.answer(f"❌ Xatolik yuz berdi: {e}")
+    finally:
+        await state.clear()
+
+@dp.callback_query(F.data.startswith("getaudio_"))
+async def send_audio(call: types.CallbackQuery):
+    video_path = call.data.split("_")[1]
+    
+    if not os.path.exists(video_path):
+        await call.answer("Fayl muddati o'tgan yoki o'chirilgan.", show_alert=True)
+        return
+
+    wait_msg = await call.message.answer("🎵 Audio ajratib olinmoqda...")
+    audio_path = f"{video_path}.mp3"
 
     try:
-        def load_video():
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                return ydl.prepare_filename(info)
+        # Audio ajratish
+        video = VideoFileClip(video_path)
+        video.audio.write_audiofile(audio_path, logger=None)
+        video.close()
 
-        video_path = await asyncio.to_thread(load_video)
-
-        if os.path.exists(video_path):
-            await msg.edit_text(
-                "📤 *Video tayyor!*\n\n"
-                "🚀 Sizga yuborilmoqda...",
-                parse_mode="Markdown"
-            )
-
-            await message.answer_video(
-                video=FSInputFile(video_path),
-                caption=
-                "✅ *Muvaffaqiyatli yuklandi!*\n\n"
-                "🎬 Video tayyor 👌\n"
-                "📲 Yana yuklash uchun link yuboring",
-                parse_mode="Markdown"
-            )
-
-            await msg.delete()
-        else:
-            raise Exception("Video topilmadi")
-
+        audio_input = FSInputFile(audio_path)
+        await call.message.answer_audio(audio_input)
+        await wait_msg.delete()
+        
     except Exception as e:
-        logging.error(e)
-        await msg.edit_text(
-            "❌ *Xatolik yuz berdi!*\n\n"
-            "🔒 Video yuklab bo‘lmadi.\n"
-            "Sababi:\n"
-            "• Profil yopiq bo‘lishi mumkin\n"
-            "• Link noto‘g‘ri bo‘lishi mumkin\n\n"
-            "🔁 Qayta urinib ko‘ring",
-            parse_mode="Markdown"
-        )
-
+        await call.message.answer(f"Audio xatosi: {e}")
     finally:
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
+        # Tozalash
+        if os.path.exists(audio_path): os.remove(audio_path)
+        folder = os.path.dirname(video_path)
+        if os.path.exists(folder): shutil.rmtree(folder, ignore_errors=True)
 
-# ================= ADMIN (TEGINILMADI) =================
+# ================= ADMIN PANEL (TEGINILMAGAN) =================
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
 async def show_users(message: types.Message):
@@ -162,14 +182,11 @@ async def yubor(message: types.Message, state: FSMContext):
     data = await state.get_data()
     users = get_all_users()
     count = 0
-
     for user in users:
         try:
             await bot.send_photo(chat_id=user[3], photo=data["photo"], caption=data["about"])
             count += 1
-        except:
-            continue
-
+        except: continue
     await message.answer(f"✅ {count} ta foydalanuvchiga yuborildi.")
     await state.clear()
 
