@@ -18,7 +18,7 @@ from create import insert_user, users_table, create_user_pdf, get_all_users, che
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
-from yt_dlp import YoutubeDL  # 🔥 kerak edi
+from yt_dlp import YoutubeDL  
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 ADMIN_ID = [6411347321, 8327989068]
