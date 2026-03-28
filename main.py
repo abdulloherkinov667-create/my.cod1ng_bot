@@ -68,23 +68,28 @@ async def start_command(message: types.Message):
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_reel)
     await message.answer(
-        "📥 Instagram REELS linkini yuboring\n\n"
-        "🔗 Faqat reels link ishlaydi!"
+        "🎬 REELS YUKLASH\n\n"
+        "📎 Reels linkini yuboring:\n"
+        "━━━━━━━━━━━━━━━\n"
+        "✅ Faqat Instagram REELS\n"
+        "🚫 Post / Story ishlamaydi\n"
+        "━━━━━━━━━━━━━━━\n\n"
+        "⏳ Video avtomatik yuklab beriladi"
     )
-
-import os
-import uuid
-from yt_dlp import YoutubeDL
-from aiogram.types import FSInputFile
 
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
-    # Faqat reels linkni tekshiramiz
-    if "instagram.com/reel" in url and "instagram.com/" in url:
-        await message.answer("❌ Iltimos faqat Instagram REELS link yuboring!")
+    # 🔥 TO‘G‘IRLANGAN TEKSHIRUV
+    if not ("instagram.com" in url and "/reel/" in url):
+        await message.answer("❌ Faqat Instagram REELS link yuboring!")
         return
+
+    import os
+    import uuid
+    from yt_dlp import YoutubeDL
+    from aiogram.types import FSInputFile
 
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp4"
@@ -101,16 +106,16 @@ async def download_reel(message: types.Message, state: FSMContext):
 
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-            video = FSInputFile(filename)
-            await message.answer_video(video)
+
+        video = FSInputFile(filename)
+        await message.answer_video(video)
 
     except Exception:
         await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
 
     finally:
         if os.path.exists(filename):
-            os.remove(filename)
-            
+            os.remove(filename)            
 # ================= ADMIN PANEL (TEGINILMAGAN) =================
 
 @dp.message(F.text == "Userlarni PDF korsh 👥")
