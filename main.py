@@ -1,4 +1,5 @@
 ﻿import asyncio
+from email.mime import message
 import logging
 import os
 import shutil
@@ -67,65 +68,50 @@ async def start_command(message: types.Message):
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_reel)
     await message.answer(
-        "🎬 *REELS YUKLASH XIZMATI*\n\n"
-        "📎 Instagram reels linkini yuboring:\n"
+        "🎬 REELS YUKLASH\n\n"
+        "📎 Reels linkini yuboring:\n"
         "━━━━━━━━━━━━━━━\n"
-        "✅ Faqat REELS ishlaydi\n"
-        "🚫 Post / Story qo‘llab-quvvatlanmaydi\n"
+        "✅ Faqat Instagram REELS\n"
+        "🚫 Post / Story ishlamaydi\n"
         "━━━━━━━━━━━━━━━\n\n"
-        "⚡ Video tez va avtomatik yuklab beriladi",
-        parse_mode="Markdown"
+        "⏳ Video avtomatik yuklab beriladi"
     )
+
 
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
     if not ("instagram.com" in url and "/reel/" in url):
-        await message.answer(
-            "❌ *Noto‘g‘ri link!*\n\n"
-            "📎 Iltimos, faqat Instagram REELS link yuboring.\n"
-            "🔗 Masalan: instagram.com/reel/...",
-            parse_mode="Markdown"
-        )
+        await message.answer("❌ Faqat Instagram REELS link yuboring!")
         return
 
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp4"
 
     ydl_opts = {
-        'outtmpl': filename,
-        'format': 'mp4',
-        'quiet': True,
-        'noplaylist': True
+        "outtmpl": filename,
+        "format": "mp4",
+        "quiet": True,
+        "noplaylist": True,
     }
 
     try:
-        await message.answer("⏳ *Video yuklanmoqda...*\n\n📥 Iltimos biroz kuting", parse_mode="Markdown")
-
+        await message.answer("⏳ Video yuklanmoqda...")
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
         video = FSInputFile(filename)
-
-        await message.answer_video(
-            video,
-            caption="🎬 *Yuklab olindi!*\n\n"
-                    "🤖 Bot: @my_cod1ngbot\n"
-                    "⚡ Tez va oson yuklab berildi",
-            parse_mode="Markdown"
-        )
+        await message.answer_video(video)
 
     except Exception:
-        await message.answer(
-            "⚠️ *Yuklashda muammo yuz berdi*\n\n"
-            "🔁 Boshqa reels link yuborib ko‘ring",
-            parse_mode="Markdown"
-        )
+        await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
 
     finally:
         if os.path.exists(filename):
             os.remove(filename)
+        await state.clear()
+
 
 # ================= ADMIN =================
 
