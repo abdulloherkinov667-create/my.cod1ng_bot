@@ -18,9 +18,9 @@ from create import insert_user, users_table, create_user_pdf, get_all_users, che
 from buttons.inline import xabar_yubor
 from stets import SendImg
 
+from yt_dlp import YoutubeDL  # 🔥 kerak edi
 
-
-API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
+API_TOKEN = "TOKEN"
 ADMIN_ID = [6411347321, 8327989068]
 
 bot = Bot(token=API_TOKEN)
@@ -79,6 +79,17 @@ async def start_video_download(message: types.Message, state: FSMContext):
 
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
+
+    # 🔥 ENG MUHIM FIX (STATE DAN CHIQISH)
+    if message.text in [
+        "🎬 Video yuklash",
+        "👥 User soni ko‘rish",
+        "Userlarni PDF korsh 👥",
+        "Xabar yuborish 📨"
+    ]:
+        await state.clear()
+        return
+
     url = message.text.strip()
 
     if not ("instagram.com" in url and "/reel/" in url):
@@ -108,7 +119,6 @@ async def download_reel(message: types.Message, state: FSMContext):
 
         video = FSInputFile(filename)
 
-        # 🔥 VIDEO TAGIGA TEXT QO‘SHILDI
         await message.answer_video(
             video,
             caption="🎬 *Yuklab olindi!*\n\n"
@@ -208,8 +218,7 @@ async def yubor(message: types.Message, state: FSMContext):
 async def bekor(message: types.Message, state: FSMContext):
     await message.answer("❌ *Yuborish bekor qilindi*", parse_mode="Markdown")
     await state.clear()
-    
-    
+
 @dp.message(F.text == "👥 User soni ko‘rish")
 async def user_count(message: types.Message):
     if message.from_user.id in ADMIN_ID:
@@ -222,8 +231,8 @@ async def user_count(message: types.Message):
             f"🚀 Bot faol ishlamoqda",
             parse_mode="Markdown"
         )
-    
-    
+
+# ================= RUN =================
 async def main():
     logging.basicConfig(level=logging.INFO)
     os.makedirs("downloads", exist_ok=True)
