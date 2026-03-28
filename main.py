@@ -20,7 +20,7 @@ from stets import SendImg
 
 from yt_dlp import YoutubeDL  # 🔥 kerak edi
 
-API_TOKEN = "TOKEN"
+API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 ADMIN_ID = [6411347321, 8327989068]
 
 bot = Bot(token=API_TOKEN)
@@ -122,7 +122,7 @@ async def download_reel(message: types.Message, state: FSMContext):
         await message.answer_video(
             video,
             caption="🎬 *Yuklab olindi!*\n\n"
-                    "🤖 Bot: @SENING_BOTING_NOMI\n"
+                    "🤖 Bot: @my_cod1ngbot\n"
                     "⚡ Tez va oson yuklab berildi",
             parse_mode="Markdown"
         )
