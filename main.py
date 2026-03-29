@@ -96,7 +96,6 @@ async def download_reel(message: types.Message, state: FSMContext):
 
     file_id = str(uuid.uuid4())
     filename = f"{file_id}.mp4"
-
     ydl_opts = {
         'outtmpl': filename,
         'format': 'mp4',
@@ -106,18 +105,11 @@ async def download_reel(message: types.Message, state: FSMContext):
 
     try:
         await message.answer("⏳ Video yuklanmoqda...")
-
         with YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
         video = FSInputFile(filename)
         await message.answer_video(video)
-        await message.answer("""
-                            🎬 Video muvaffaqiyatli yuklandi!
-
-📌 Ushbu video @my_cod1ngbot orqali yuklab berildi
-🚀 Biz bilan tez va oson yuklang! 
-                            """)
 
     except Exception:
         await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
