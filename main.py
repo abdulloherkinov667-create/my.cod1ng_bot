@@ -71,22 +71,47 @@ async def start_command(message: types.Message):
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_reel)
     await message.answer(
-        "🎬 REELS YUKLASH\n\n"
-        "📎 Reels linkini yuboring:\n"
-        "━━━━━━━━━━━━━━━\n"
-        "✅ Faqat Instagram REELS\n"
-        "🚫 Post / Story ishlamaydi\n"
-        "━━━━━━━━━━━━━━━\n\n"
-        "⏳ Video avtomatik yuklab beriladi"
+        "🎬 VIDEO YUKLASH MODEMI\n\n"
+        "📎 Iltimos, Instagram video linkini yuboring.\n"
+        "🔁 Bu holat to‘xtamaguncha video linklarni qabul qiladi.\n"
+        "❌ Agar bekor qilmoqchi bo‘lsangiz /cancel buyrug‘ini bosing.\n\n"
+        "⏳ Video avtomatik yuklab olinadi"
     )
 
 @dp.message(InstagramStates.waiting_for_reel)
 async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
-    # 🔥 TO‘G‘IRLANGAN TEKSHIRUV
-    if not ("instagram.com" in url and "/reel/" in url):
-        await message.answer("❌ Faqat Instagram REELS link yuboring!")
+    # Agar foydalanuvchi yana video tugmasini bosgan bo‘lsa, xato tarzda "link noto‘g‘ri" chiqmasin
+    if url == "🎬 Video yuklash":
+        await message.answer("📌 Siz hozir video yuklash rejimidasiz. Iltimos, Instagram video linkini yuboring yoki /cancel buyrug‘ini bosing.")
+        return
+
+    # Boshqa asosiy tugmalar bosilganda holatni bekor qilish va qayta tanlash so‘rash
+    main_keyboard_buttons = [
+        "Userlarni PDF korsh 👥",
+        "Userlarni soni 👥",
+        "Xabar yuborish 📨",
+        "👥 User soni ko‘rish"
+    ]
+
+    if url in main_keyboard_buttons:
+        await state.clear()
+        await message.answer("⚙️ Oldingi video yuklash rejimi bekor qilindi. Iltimos, yangi tugmani qayta bosing.")
+        return
+
+    # URL format tekshiruvi
+    if not (url.startswith("http://") or url.startswith("https://")):
+        await message.answer("❌ Iltimos, amaldagi URL yuboring. Masalan: https://www.instagram.com/reel/...")
+        return
+
+    if "instagram.com" not in url:
+        await message.answer("❌ Faqat Instagram manzilni qabul qilamiz (instagram.com).")
+        return
+
+    # Video turini yengillashtirilgan tekshirish (reels / post / tv orqali)
+    if not any(k in url for k in ["/reel/", "/p/", "/tv/"]):
+        await message.answer("⚠️ Mumkin bo‘lgan Instagram video linkini yuboring (reel/p/tv).")
         return
 
     import os
@@ -117,6 +142,11 @@ async def download_reel(message: types.Message, state: FSMContext):
     finally:
         if os.path.exists(filename):
             os.remove(filename)
+
+@dp.message(F.text == "/cancel")
+async def cancel_video_upload(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Video yuklash rejimi bekor qilindi. Qayta boshlash uchun 🎬 Video yuklash tugmasini bosib, link yuboring.")
 
 # ================= ADMIN =================
 
