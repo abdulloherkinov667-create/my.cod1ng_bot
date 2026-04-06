@@ -67,86 +67,86 @@ async def start_command(message: types.Message):
 
 # ================= VIDEO YUKLASH =================
 
-@dp.message(F.text == "🎬 Video yuklash")
-async def start_video_download(message: types.Message, state: FSMContext):
-    await state.set_state(InstagramStates.waiting_for_reel)
-    await message.answer(
-        "🎬 VIDEO YUKLASH MODEMI\n\n"
-        "📎 Iltimos, Instagram video linkini yuboring.\n"
-        "🔁 Bu holat to‘xtamaguncha video linklarni qabul qiladi.\n"
-        "❌ Agar bekor qilmoqchi bo‘lsangiz /cancel buyrug‘ini bosing.\n\n"
-        "⏳ Video avtomatik yuklab olinadi"
-    )
+# @dp.message(F.text == "🎬 Video yuklash")
+# async def start_video_download(message: types.Message, state: FSMContext):
+#     await state.set_state(InstagramStates.waiting_for_reel)
+#     await message.answer(
+#         "🎬 VIDEO YUKLASH MODEMI\n\n"
+#         "📎 Iltimos, Instagram video linkini yuboring.\n"
+#         "🔁 Bu holat to‘xtamaguncha video linklarni qabul qiladi.\n"
+#         "❌ Agar bekor qilmoqchi bo‘lsangiz /cancel buyrug‘ini bosing.\n\n"
+#         "⏳ Video avtomatik yuklab olinadi"
+#     )
 
-@dp.message(InstagramStates.waiting_for_reel)
-async def download_reel(message: types.Message, state: FSMContext):
-    url = message.text.strip()
+# @dp.message(InstagramStates.waiting_for_reel)
+# async def download_reel(message: types.Message, state: FSMContext):
+#     url = message.text.strip()
 
-    # Agar foydalanuvchi yana video tugmasini bosgan bo‘lsa, xato tarzda "link noto‘g‘ri" chiqmasin
-    if url == "🎬 Video yuklash":
-        await message.answer("📌 Siz hozir video yuklash rejimidasiz. Iltimos, Instagram video linkini yuboring yoki /cancel buyrug‘ini bosing.")
-        return
+#     # Agar foydalanuvchi yana video tugmasini bosgan bo‘lsa, xato tarzda "link noto‘g‘ri" chiqmasin
+#     if url == "🎬 Video yuklash":
+#         await message.answer("📌 Siz hozir video yuklash rejimidasiz. Iltimos, Instagram video linkini yuboring yoki /cancel buyrug‘ini bosing.")
+#         return
 
-    # Boshqa asosiy tugmalar bosilganda holatni bekor qilish va qayta tanlash so‘rash
-    main_keyboard_buttons = [
-        "Userlarni PDF korsh 👥",
-        "Userlarni soni 👥",
-        "Xabar yuborish 📨",
-        "👥 User soni ko‘rish"
-    ]
+#     # Boshqa asosiy tugmalar bosilganda holatni bekor qilish va qayta tanlash so‘rash
+#     main_keyboard_buttons = [
+#         "Userlarni PDF korsh 👥",
+#         "Userlarni soni 👥",
+#         "Xabar yuborish 📨",
+#         "👥 User soni ko‘rish"
+#     ]
 
-    if url in main_keyboard_buttons:
-        await state.clear()
-        await message.answer("⚙️ Oldingi video yuklash rejimi bekor qilindi. Iltimos, yangi tugmani qayta bosing.")
-        return
+#     if url in main_keyboard_buttons:
+#         await state.clear()
+#         await message.answer("⚙️ Oldingi video yuklash rejimi bekor qilindi. Iltimos, yangi tugmani qayta bosing.")
+#         return
 
-    # URL format tekshiruvi
-    if not (url.startswith("http://") or url.startswith("https://")):
-        await message.answer("❌ Iltimos, amaldagi URL yuboring. Masalan: https://www.instagram.com/reel/...")
-        return
+#     # URL format tekshiruvi
+#     if not (url.startswith("http://") or url.startswith("https://")):
+#         await message.answer("❌ Iltimos, amaldagi URL yuboring. Masalan: https://www.instagram.com/reel/...")
+#         return
 
-    if "instagram.com" not in url:
-        await message.answer("❌ Faqat Instagram manzilni qabul qilamiz (instagram.com).")
-        return
+#     if "instagram.com" not in url:
+#         await message.answer("❌ Faqat Instagram manzilni qabul qilamiz (instagram.com).")
+#         return
 
-    # Video turini yengillashtirilgan tekshirish (reels / post / tv orqali)
-    if not any(k in url for k in ["/reel/", "/p/", "/tv/"]):
-        await message.answer("⚠️ Mumkin bo‘lgan Instagram video linkini yuboring (reel/p/tv).")
-        return
+#     # Video turini yengillashtirilgan tekshirish (reels / post / tv orqali)
+#     if not any(k in url for k in ["/reel/", "/p/", "/tv/"]):
+#         await message.answer("⚠️ Mumkin bo‘lgan Instagram video linkini yuboring (reel/p/tv).")
+#         return
 
-    import os
-    import uuid
-    from yt_dlp import YoutubeDL
-    from aiogram.types import FSInputFile
+#     import os
+#     import uuid
+#     from yt_dlp import YoutubeDL
+#     from aiogram.types import FSInputFile
 
-    file_id = str(uuid.uuid4())
-    filename = f"{file_id}.mp4"
-    ydl_opts = {
-        'outtmpl': filename,
-        'format': 'mp4',
-        'quiet': True,
-        'noplaylist': True
-    }
+#     file_id = str(uuid.uuid4())
+#     filename = f"{file_id}.mp4"
+#     ydl_opts = {
+#         'outtmpl': filename,
+#         'format': 'mp4',
+#         'quiet': True,
+#         'noplaylist': True
+#     }
 
-    try:
-        await message.answer("⏳ Video yuklanmoqda...")
-        with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+#     try:
+#         await message.answer("⏳ Video yuklanmoqda...")
+#         with YoutubeDL(ydl_opts) as ydl:
+#             ydl.download([url])
 
-        video = FSInputFile(filename)
-        await message.answer_video(video)
+#         video = FSInputFile(filename)
+#         await message.answer_video(video)
 
-    except Exception:
-        await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
+#     except Exception:
+#         await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
 
-    finally:
-        if os.path.exists(filename):
-            os.remove(filename)
+#     finally:
+#         if os.path.exists(filename):
+#             os.remove(filename)
 
-@dp.message(F.text == "/cancel")
-async def cancel_video_upload(message: types.Message, state: FSMContext):
-    await state.clear()
-    await message.answer("❌ Video yuklash rejimi bekor qilindi. Qayta boshlash uchun 🎬 Video yuklash tugmasini bosib, link yuboring.")
+# @dp.message(F.text == "/cancel")
+# async def cancel_video_upload(message: types.Message, state: FSMContext):
+#     await state.clear()
+#     await message.answer("❌ Video yuklash rejimi bekor qilindi. Qayta boshlash uchun 🎬 Video yuklash tugmasini bosib, link yuboring.")
 
 # ================= ADMIN =================
 
