@@ -71,11 +71,11 @@ async def start_command(message: types.Message):
 async def start_video_download(message: types.Message, state: FSMContext):
     await state.set_state(InstagramStates.waiting_for_reel)
     await message.answer(
-        "🎬 VIDEO YUKLASH MODEMI\n\n"
-        "📎 Iltimos, Instagram video linkini yuboring.\n"
-        "🔁 Bu holat to‘xtamaguncha video linklarni qabul qiladi.\n"
+        "🎬 INSTAGRAM YUKLASH MODEMI\n\n"
+        "📎 Iltimos, Instagram reel, post yoki story linkini yuboring.\n"
+        "🔁 Bu holat to‘xtamaguncha linklarni qabul qiladi.\n"
         "❌ Agar bekor qilmoqchi bo‘lsangiz /cancel buyrug‘ini bosing.\n\n"
-        "⏳ Video avtomatik yuklab olinadi"
+        "⏳ Kontent avtomatik yuklab olinadi"
     )
 
 @dp.message(InstagramStates.waiting_for_reel)
@@ -83,7 +83,7 @@ async def download_reel(message: types.Message, state: FSMContext):
     url = message.text.strip()
 
     if url == "🎬 Video yuklash":
-        await message.answer("📌 Siz hozir video yuklash rejimidasiz. Iltimos, Instagram video linkini yuboring yoki /cancel buyrug‘ini bosing.")
+        await message.answer("📌 Siz hozir Instagram kontent yuklash rejimidasiz. Iltimos, link yuboring yoki /cancel buyrug‘ini bosing.")
         return
 
     main_keyboard_buttons = [
@@ -95,21 +95,19 @@ async def download_reel(message: types.Message, state: FSMContext):
 
     if url in main_keyboard_buttons:
         await state.clear()
-        await message.answer("⚙️ Oldingi video yuklash rejimi bekor qilindi. Iltimos, yangi tugmani qayta bosing.")
+        await message.answer("⚙️ Oldingi yuklash rejimi bekor qilindi. Iltimos, yangi tugmani qayta bosing.")
         return
 
-    # URL format tekshiruvi
     if not (url.startswith("http://") or url.startswith("https://")):
-        await message.answer("❌ Iltimos, amaldagi URL yuboring. Masalan: https://www.instagram.com/reel/...")
+        await message.answer("❌ Iltimos, amaldagi URL yuboring. Masalan: https://www.instagram.com/reel/... yoki https://www.instagram.com/stories/...")
         return
 
     if "instagram.com" not in url:
-        await message.answer("❌ Faqat Instagram manzilni qabul qilamiz (instagram.com).")
+        await message.answer("❌ Faqat Instagram manzilini qabul qilamiz (instagram.com).")
         return
 
-    # Video turini yengillashtirilgan tekshirish (reels / post / tv orqali)
     if not any(k in url for k in ["/reel/", "/p/", "/tv/", "/stories/"]):
-        await message.answer("⚠️ Mumkin bo‘lgan Instagram video linkini yuboring (reel/p/tv).")
+        await message.answer("⚠️ Mumkin bo‘lgan Instagram kontent linkini yuboring (reel/p/tv/stories).")
         return
 
     import os
@@ -117,29 +115,42 @@ async def download_reel(message: types.Message, state: FSMContext):
     from yt_dlp import YoutubeDL
     from aiogram.types import FSInputFile
 
+    os.makedirs("downloads", exist_ok=True)
     file_id = str(uuid.uuid4())
-    filename = f"{file_id}.mp4"
+    output_template = os.path.join("downloads", f"{file_id}.%(ext)s")
     ydl_opts = {
-        'outtmpl': filename,
-        'format': 'mp4',
+        'outtmpl': output_template,
+        'format': 'best',
         'quiet': True,
-        'noplaylist': True
+        'noplaylist': True,
+        'noprogress': True
     }
 
+    downloaded_file = None
     try:
-        await message.answer("⏳ Video yuklanmoqda...")
+        await message.answer("⏳ Instagram kontent yuklanmoqda...")
         with YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info = ydl.extract_info(url, download=True)
 
-        video = FSInputFile(filename)
-        await message.answer_video(video)
+        ext = info.get('ext') if info else None
+        downloaded_file = os.path.join("downloads", f"{file_id}.{ext}") if ext else None
+
+        if not downloaded_file or not os.path.exists(downloaded_file):
+            raise FileNotFoundError("Yuklangan fayl topilmadi")
+
+        if ext in ["jpg", "jpeg", "png", "webp", "gif", "bmp"]:
+            await message.answer_photo(FSInputFile(downloaded_file))
+        elif ext in ["mp4", "mkv", "webm", "mov", "avi"]:
+            await message.answer_video(FSInputFile(downloaded_file))
+        else:
+            await message.answer_document(FSInputFile(downloaded_file))
 
     except Exception:
-        await message.answer("⚠️ Video yuklab bo‘lmadi, boshqa link yuboring.")
+        await message.answer("⚠️ Kontent yuklab bo‘lmadi. Iltimos, boshqa Instagram reel yoki story linkini yuboring.")
 
     finally:
-        if os.path.exists(filename):
-            os.remove(filename)
+        if downloaded_file and os.path.exists(downloaded_file):
+            os.remove(downloaded_file)
 
 @dp.message(F.text == "/cancel")
 async def cancel_video_upload(message: types.Message, state: FSMContext):
