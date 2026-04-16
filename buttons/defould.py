@@ -11,7 +11,13 @@ from aiogram import Bot, Dispatcher, types, F
 def start_button():
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="🎬 Video yuklash")]
+            [
+                KeyboardButton(text="Kino ko'rish 🎥"),
+                 KeyboardButton(text="🎬 Video yuklash"),
+            ],
+            [
+                KeyboardButton(text="Shikoyat qilish 📝")
+            ]
         ],
         resize_keyboard=True
     )
