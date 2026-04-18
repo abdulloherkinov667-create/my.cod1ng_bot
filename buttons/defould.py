@@ -22,8 +22,8 @@ def start_button():
         resize_keyboard=True
     )
     
-    
-    
+print("Buttons loaded successfully.")    
+
 def user_button():
     return ReplyKeyboardMarkup(
         keyboard=[
