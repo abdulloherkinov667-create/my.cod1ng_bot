@@ -28,11 +28,11 @@ def user_button():
         keyboard=[
             [
                 KeyboardButton(text="Userlarni PDF korsh 👥"),
-                KeyboardButton(text="Userlarni soni 👥")
+                KeyboardButton(text="Userlarni soni 👥"),   # ← shu qolsin
             ],
             [
                 KeyboardButton(text="Xabar yuborish 📨"),
-                KeyboardButton(text="🎬 Video yuklash")
+                KeyboardButton(text="🎬 Video yuklash"),
             ]
         ],
         resize_keyboard=True
