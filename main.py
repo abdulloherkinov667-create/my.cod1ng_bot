@@ -19,7 +19,7 @@ from stets import SendImg
 from yuklash import register_video_handlers
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-ADMIN_ID = [6411347321, 8327989068]
+ADMIN_ID = [6411347321]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
