@@ -2,17 +2,14 @@ import sqlite3
 from aiogram import Dispatcher, types, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from main import ADMIN_IDS
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-
-# --- SOZLAMALAR ---
-ADMIN_IDS = [6411347321]
 
 class ComplaintStates(StatesGroup):
     waiting_for_name = State()
     waiting_for_phone = State()
     waiting_for_text = State()
 
-# --- MA'LUMOTLAR BAZASI BILAN ISHLASH ---
 def init_db():
     conn = sqlite3.connect("shikoyat_baza.db")
     cursor = conn.cursor()
@@ -25,7 +22,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# --- TUGMALAR ---
 def get_phone_kb():
     return ReplyKeyboardMarkup(
         keyboard=[
@@ -35,17 +31,15 @@ def get_phone_kb():
         one_time_keyboard=True
     )
 
-# --- HANDLERLARNI RO'YXATDAN O'TKAZISH ---
 def register_complaint_handlers(dp: Dispatcher, bot: Bot):
     init_db()
 
-    # 1. Shikoyat jarayonini boshlash
     @dp.message(F.text == "Shikoyat qilish 📝")
     async def start_complaint(message: types.Message, state: FSMContext):
         await state.set_state(ComplaintStates.waiting_for_name)
         await message.answer(
-            "<b>Ismingizni kiriting:</b>", 
-            parse_mode="HTML", 
+            "<b>Ismingizni kiriting:</b>",
+            parse_mode="HTML",
             reply_markup=ReplyKeyboardRemove()
         )
 
@@ -57,7 +51,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         📌 Eslatma: Telefon raqamingiz talab qilinadi. 
         ✍️ Iltimos, shikoyatingizni aniq va asosli tarzda yozing. 
 
-        🔍 Murojaatingiz operatorlar tomonidan ko‘rib chiqiladi va zarurat tug‘ilganda siz bilan bog‘lanishlari mumkin. 
+        🔍 Murojaatingiz operatorlar tomonidan ko'rib chiqiladi va zarurat tug'ilganda siz bilan bog'lanishlari mumkin. 
         👤 Iltimos, ismingizni kiriting.
         """, reply_markup=get_phone_kb())
 
@@ -66,13 +60,13 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         if message.contact:
             phone = message.contact.phone_number
         else:
-            phone = message.text 
+            phone = message.text
 
         await state.update_data(phone=phone)
         await state.set_state(ComplaintStates.waiting_for_text)
         await message.answer(
-            "<b>Shikoyatingiz mazmunini yozing:</b>", 
-            parse_mode="HTML", 
+            "<b>Shikoyatingiz mazmunini yozing:</b>",
+            parse_mode="HTML",
             reply_markup=ReplyKeyboardRemove()
         )
 
@@ -92,16 +86,14 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         conn.close()
 
         await message.answer("✅ Shikoyatingiz qabul qilindi!")
+
         admin_msg = (
             f"📢 <b>Yangi shikoyat</b>\n"
             f"━━━━━━━━━━━━━━━\n\n"
-            
             f"👤 <b>Ism:</b> {name}\n"
             f"📞 <b>Telefon:</b> {phone}\n\n"
-            
             f"📝 <b>Shikoyat matni:</b>\n"
             f"{text}\n\n"
-            
             f"━━━━━━━━━━━━━━━"
         )
         for admin_id in ADMIN_IDS:
@@ -109,10 +101,9 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
                 await bot.send_message(admin_id, admin_msg, parse_mode="HTML")
             except Exception:
                 pass
-        
+
         await state.clear()
 
-    # 5. Foydalanuvchi o'z shikoyatlarini ko'rishi
     @dp.message(F.text == "Mening shikoyatlarim 📋")
     async def show_user_complaints(message: types.Message):
         conn = sqlite3.connect("shikoyat_baza.db")
@@ -130,8 +121,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             txt += f"{i}. {row[0]}\n"
         await message.answer(txt, parse_mode="HTML")
 
-    # 6. Admin barcha shikoyatlarni ko'rishi
-    @dp.message(F.text == "Shikoyatlar ro‘yxati 📝")
+    @dp.message(F.text == "Shikoyatlar ro'yxati 📝")
     async def show_all_complaints(message: types.Message):
         if message.from_user.id not in ADMIN_IDS:
             return

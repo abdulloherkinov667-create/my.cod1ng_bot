@@ -16,7 +16,8 @@ def start_button():
                  KeyboardButton(text="🎬 Video yuklash"),
             ],
             [
-                KeyboardButton(text="Shikoyat qilish 📝")
+                KeyboardButton(text="Shikoyat qilish 📝"),
+                KeyboardButton(text="Mening shikoyatlarim 📋")
             ]
         ],
         resize_keyboard=True
