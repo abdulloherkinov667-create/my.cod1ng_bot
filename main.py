@@ -19,7 +19,7 @@ from create import insert_user, users_table, create_user_pdf, get_all_users, che
 from yuklash import register_video_handlers
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-ADMIN_IDS = [6411347321, 8327989068]
+ADMIN_IDS = [6411347321]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
