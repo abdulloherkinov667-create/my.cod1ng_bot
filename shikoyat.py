@@ -2,8 +2,11 @@ import sqlite3
 from aiogram import Dispatcher, types, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from main import ADMIN_IDS
+# from main import ADMIN_IDS  <-- Buni o'chiring, xato berishi mumkin
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+
+# Admin ID ni shu yerga o'zini yozib qo'ying
+ADMIN_IDS = [6411347321] 
 
 class ComplaintStates(StatesGroup):
     waiting_for_name = State()
@@ -52,7 +55,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         ✍️ Iltimos, shikoyatingizni aniq va asosli tarzda yozing. 
 
         🔍 Murojaatingiz operatorlar tomonidan ko'rib chiqiladi va zarurat tug'ilganda siz bilan bog'lanishlari mumkin. 
-        👤 Iltimos, ismingizni kiriting.
+        👤 Iltimos, telefon raqamingizni yuboring.
         """, reply_markup=get_phone_kb())
 
     @dp.message(ComplaintStates.waiting_for_phone)
@@ -81,7 +84,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         conn = sqlite3.connect("shikoyat_baza.db")
         cursor = conn.cursor()
         cursor.execute("INSERT INTO complaints (user_id, name, phone, text) VALUES (?, ?, ?, ?)",
-                       (user_id, name, phone, text))
+                        (user_id, name, phone, text))
         conn.commit()
         conn.close()
 
