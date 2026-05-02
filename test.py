@@ -1,1 +1,0 @@
-DB_URL = "postgresql://postgres:hjvccHtrtkFyNfvXgfsuYDOZZTOTaOeH@nozomi.proxy.rlwy.net:38184/railway"

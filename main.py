@@ -14,7 +14,7 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from buttons.defould import user_button, start_button
+from buttons.defould import user_button, start_button, yoq_button
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from yuklash import register_video_handlers
 
@@ -24,47 +24,12 @@ ADMIN_IDS = [6411347321]
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 register_video_handlers(dp)
+
 class SendImg(StatesGroup):
     image = State()
     about = State()
     confirm = State()
-
-
-# def start_button() -> ReplyKeyboardMarkup:
-#     """Oddiy foydalanuvchi uchun klaviatura"""
-#     keyboard = ReplyKeyboardMarkup(
-#         keyboard=[
-#             [KeyboardButton(text="Shikoyat qilish 📝"), KeyboardButton(text="Kino ko'rish 🎥")],
-#             [KeyboardButton(text="Yordam 💬")],
-#         ],
-#         resize_keyboard=True,
-#         one_time_keyboard=False,
-#     )
-#     return keyboard
-
-
-def admin_button() -> ReplyKeyboardMarkup:
-    """Admin uchun klaviatura"""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Userlarni PDF korsh 👥"), KeyboardButton(text="👥 User soni ko'rish")],
-            [KeyboardButton(text="Xabar yuborish 📨")],
-        ],
-        resize_keyboard=True,
-    )
-    return keyboard
-
-
-def send_confirmation_buttons() -> ReplyKeyboardMarkup:
-    """Tasdiqlash tugmalari"""
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Xa ✅"), KeyboardButton(text="Yo'q ❌")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True,
-    )
-
+    
 
 def xabar_yubor() -> InlineKeyboardMarkup:
     """Xabar turi tanlash (inline)"""
@@ -75,8 +40,6 @@ def xabar_yubor() -> InlineKeyboardMarkup:
         ]
     )
 
-
-# ===================== /start =====================
 
 @dp.message(CommandStart())
 async def start_command(message: types.Message):
@@ -111,8 +74,6 @@ async def start_command(message: types.Message):
         )
 
 
-# ===================== USER HANDLERS =====================
-
 @dp.message(F.text == "Shikoyat qilish 📝")
 async def shikoyat_qilish(message: types.Message):
     await message.answer(
@@ -140,8 +101,6 @@ async def yordam(message: types.Message):
         parse_mode="Markdown",
     )
 
-
-# ===================== ADMIN HANDLERS =====================
 
 def admin_only(func):
     """Admin tekshiruv dekoratori"""
@@ -223,7 +182,7 @@ async def caption_qabul(message: types.Message, state: FSMContext):
     )
     await message.answer(
         "📨 *Barcha foydalanuvchilarga yuborilsinmi?*",
-        reply_markup=send_confirmation_buttons(),
+        reply_markup=yoq_button(),
         parse_mode="Markdown",
     )
     await state.set_state(SendImg.confirm)
@@ -287,7 +246,7 @@ async def text_msg_preview(message: types.Message, state: FSMContext):
     await message.answer(
         f"📋 *Ko'rinishi:*\n\n{message.text}\n\n"
         "📨 *Barcha foydalanuvchilarga yuborilsinmi?*",
-        reply_markup=send_confirmation_buttons(),
+        reply_markup=yoq_button(),
         parse_mode="Markdown",
     )
     await state.set_state(SendText.confirm)

@@ -1,7 +1,6 @@
 import os
 import uuid
 import asyncio
-
 from yt_dlp import YoutubeDL
 
 from aiogram import Dispatcher, types, F
@@ -9,17 +8,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile
 
-
-# ─────────────────────────────────────────────
-#  HOLATLAR
-# ─────────────────────────────────────────────
 class VideoStates(StatesGroup):
     waiting_for_link = State()
 
 
-# ─────────────────────────────────────────────
-#  QO'LLAB-QUVVATLANADIGAN PLATFORMALAR
-# ─────────────────────────────────────────────
 SUPPORTED_DOMAINS = [
     "instagram.com",
     "tiktok.com",
@@ -34,7 +26,7 @@ SUPPORTED_DOMAINS = [
     "vimeo.com",
 ]
 
-# Tugmalar bosilganda rejimdan chiqish uchun
+
 MAIN_KEYBOARD_BUTTONS = [
     "Userlarni PDF korsh 👥",
     "Userlarni soni 👥",
@@ -46,9 +38,6 @@ MAIN_KEYBOARD_BUTTONS = [
 ]
 
 
-# ─────────────────────────────────────────────
-#  HANDLERLAR
-# ─────────────────────────────────────────────
 def register_video_handlers(dp: Dispatcher):
 
     @dp.message(F.text == "🎬 Video yuklash")
