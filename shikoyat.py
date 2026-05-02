@@ -14,7 +14,7 @@ class ComplaintStates(StatesGroup):
 
 # --- MA'LUMOTLAR BAZASI BILAN ISHLASH ---
 def init_db():
-    conn = sqlite3.connect("bot_data.db")
+    conn = sqlite3.connect("shikoyat_baza.db")
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS complaints 
                       (id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -49,24 +49,24 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             reply_markup=ReplyKeyboardRemove()
         )
 
-    # 2. Ismni qabul qilish
     @dp.message(ComplaintStates.waiting_for_name)
     async def get_name(message: types.Message, state: FSMContext):
         await state.update_data(name=message.text)
         await state.set_state(ComplaintStates.waiting_for_phone)
-        await message.answer(
-            "<b>Pastdagi tugmani bosib telefon raqamingizni yuboring:</b>", 
-            parse_mode="HTML", 
-            reply_markup=get_phone_kb()
-        )
+        await message.answer("""
+        📌 Eslatma: Telefon raqamingiz talab qilinadi. 
+        ✍️ Iltimos, shikoyatingizni aniq va asosli tarzda yozing. 
 
-    # 3. Telefonni qabul qilish (Kontakt tugmasi orqali)
+        🔍 Murojaatingiz operatorlar tomonidan ko‘rib chiqiladi va zarurat tug‘ilganda siz bilan bog‘lanishlari mumkin. 
+        👤 Iltimos, ismingizni kiriting.
+        """, reply_markup=get_phone_kb())
+
     @dp.message(ComplaintStates.waiting_for_phone)
     async def get_phone(message: types.Message, state: FSMContext):
         if message.contact:
             phone = message.contact.phone_number
         else:
-            phone = message.text # Agar qo'lda yozsa ham qabul qiladi
+            phone = message.text 
 
         await state.update_data(phone=phone)
         await state.set_state(ComplaintStates.waiting_for_text)
@@ -76,7 +76,6 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             reply_markup=ReplyKeyboardRemove()
         )
 
-    # 4. Yakuniy qism: Saqlash va Adminga yuborish
     @dp.message(ComplaintStates.waiting_for_text)
     async def get_text(message: types.Message, state: FSMContext):
         data = await state.get_data()
@@ -85,8 +84,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         phone = data['phone']
         text = message.text
 
-        # Bazaga saqlash
-        conn = sqlite3.connect("bot_data.db")
+        conn = sqlite3.connect("shikoyat_baza.db")
         cursor = conn.cursor()
         cursor.execute("INSERT INTO complaints (user_id, name, phone, text) VALUES (?, ?, ?, ?)",
                        (user_id, name, phone, text))
@@ -94,14 +92,17 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         conn.close()
 
         await message.answer("✅ Shikoyatingiz qabul qilindi!")
-
-        # Adminga xabar yuborish
         admin_msg = (
-            f"🔔 <b>Yangi shikoyat!</b>\n\n"
+            f"📢 <b>Yangi shikoyat</b>\n"
+            f"━━━━━━━━━━━━━━━\n\n"
+            
             f"👤 <b>Ism:</b> {name}\n"
-            f"📞 <b>Tel:</b> {phone}\n"
-            f"📝 <b>Matn:</b> {text}\n"
-            f"🆔 <b>User ID:</b> <code>{user_id}</code>"
+            f"📞 <b>Telefon:</b> {phone}\n\n"
+            
+            f"📝 <b>Shikoyat matni:</b>\n"
+            f"{text}\n\n"
+            
+            f"━━━━━━━━━━━━━━━"
         )
         for admin_id in ADMIN_IDS:
             try:
@@ -114,7 +115,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
     # 5. Foydalanuvchi o'z shikoyatlarini ko'rishi
     @dp.message(F.text == "Mening shikoyatlarim 📋")
     async def show_user_complaints(message: types.Message):
-        conn = sqlite3.connect("bot_data.db")
+        conn = sqlite3.connect("shikoyat_baza.db")
         cursor = conn.cursor()
         cursor.execute("SELECT text FROM complaints WHERE user_id = ?", (message.from_user.id,))
         rows = cursor.fetchall()
@@ -135,7 +136,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         if message.from_user.id not in ADMIN_IDS:
             return
 
-        conn = sqlite3.connect("bot_data.db")
+        conn = sqlite3.connect("shikoyat_baza.db")
         cursor = conn.cursor()
         cursor.execute("SELECT name, phone, text FROM complaints")
         rows = cursor.fetchall()
