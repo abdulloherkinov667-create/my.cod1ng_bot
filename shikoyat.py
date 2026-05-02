@@ -124,14 +124,14 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             txt += f"{i}. {row[0]}\n"
         await message.answer(txt, parse_mode="HTML")
 
-    @dp.message(F.text == "Shikoyatlar ro'yxati 📝")
+    @dp.message(F.text == "Shikoyatlar ro‘yxati 📝")
     async def show_all_complaints(message: types.Message):
         if message.from_user.id not in ADMIN_IDS:
             return
 
         conn = sqlite3.connect("shikoyat_baza.db")
         cursor = conn.cursor()
-        cursor.execute("SELECT name, phone, text FROM complaints")
+        cursor.execute("SELECT id, user_id, name, phone, text FROM complaints")
         rows = cursor.fetchall()
         conn.close()
 
@@ -140,6 +140,6 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             return
 
         txt = "📂 <b>Barcha shikoyatlar:</b>\n\n"
-        for i, row in enumerate(rows, 1):
-            txt += f"{i}. <b>{row[0]}</b> ({row[1]}):\n<i>{row[2]}</i>\n\n"
+        for row in rows:
+            txt += f"🆔 <b>ID:</b> {row[0]}\n👤 <b>User ID:</b> {row[1]}\n👨‍💼 <b>Ism:</b> {row[2]}\n📞 <b>Telefon:</b> {row[3]}\n📝 <b>Shikoyat:</b> {row[4]}\n━━━━━━━━━━━━━━━━━\n\n"
         await message.answer(txt, parse_mode="HTML")
