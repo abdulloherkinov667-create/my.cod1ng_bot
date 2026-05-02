@@ -14,7 +14,7 @@ from aiogram.types import (
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-# ---- Mavjud modullar (o'zingiznikini import qiling) ----
+from buttons.defould import user_button, start_button
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
 from yuklash import register_video_handlers
 
@@ -24,28 +24,23 @@ ADMIN_IDS = [6411347321]
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 register_video_handlers(dp)
-
-
-# ===================== STATES =====================
 class SendImg(StatesGroup):
     image = State()
     about = State()
     confirm = State()
 
 
-# ===================== KEYBOARDS =====================
-
-def start_button() -> ReplyKeyboardMarkup:
-    """Oddiy foydalanuvchi uchun klaviatura"""
-    keyboard = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Shikoyat qilish 📝"), KeyboardButton(text="Kino ko'rish 🎥")],
-            [KeyboardButton(text="Yordam 💬")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-    )
-    return keyboard
+# def start_button() -> ReplyKeyboardMarkup:
+#     """Oddiy foydalanuvchi uchun klaviatura"""
+#     keyboard = ReplyKeyboardMarkup(
+#         keyboard=[
+#             [KeyboardButton(text="Shikoyat qilish 📝"), KeyboardButton(text="Kino ko'rish 🎥")],
+#             [KeyboardButton(text="Yordam 💬")],
+#         ],
+#         resize_keyboard=True,
+#         one_time_keyboard=False,
+#     )
+#     return keyboard
 
 
 def admin_button() -> ReplyKeyboardMarkup:
@@ -102,7 +97,7 @@ async def start_command(message: types.Message):
             "📊 Statistikalar\n"
             "📨 Xabar yuborish\n"
             "👥 Foydalanuvchilar ro'yxati",
-            reply_markup=admin_button(),
+            reply_markup=user_button(),
             parse_mode="Markdown",
         )
     else:
