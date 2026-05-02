@@ -5,6 +5,8 @@ from aiogram.fsm.state import State, StatesGroup
 # from main import ADMIN_IDS  <-- Buni o'chiring, xato berishi mumkin
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
+from buttons.defould import user_button
+
 # Admin ID ni shu yerga o'zini yozib qo'ying
 ADMIN_IDS = [6411347321] 
 
@@ -88,7 +90,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
         conn.commit()
         conn.close()
 
-        await message.answer("✅ Shikoyatingiz qabul qilindi!")
+        await message.answer("✅ Shikoyatingiz qabul qilindi!", reply_markup=user_button())
 
         admin_msg = (
             f"📢 <b>Yangi shikoyat</b>\n"
