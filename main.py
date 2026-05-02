@@ -74,14 +74,6 @@ async def start_command(message: types.Message):
         )
 
 
-@dp.message(F.text == "Shikoyat qilish 📝")
-async def shikoyat_qilish(message: types.Message):
-    await message.answer(
-        "Uzr 🙏 Ushbu funksiya hozircha to'liq ishga tushmagan.\n"
-        "Hozirda uni yaxshilash ustida ishlayapmiz va yaqin orada foydalanish mumkin bo'ladi."
-    )
-
-
 @dp.message(F.text == "Kino ko'rish 🎥")
 async def kino_korish(message: types.Message):
     await message.answer(
