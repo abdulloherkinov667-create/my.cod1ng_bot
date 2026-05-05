@@ -75,18 +75,18 @@ async def run_ydl(opts: dict, url: str):
 async def smart_download(url: str, uid: str) -> list[str]:
     """
     URL dan media yuklab oladi.
-    1) Avval URL info oladi — video bormi yo'qmi tekshiradi
-    2) Video bo'lsa — video yuklab beradi
-    3) Video bo'lmasa (faqat rasm/photo) — rasm yuklab beradi
+    Har doim video va rasm yuklab beradi agar mavjud bo'lsa.
     """
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}.%(ext)s")
+
+    noplaylist = not any(d in url for d in ["instagram.com", "tiktok.com"])
 
     base_opts = {
         "outtmpl": tmpl,
         "quiet": True,
         "no_warnings": True,
-        "noplaylist": True,
+        "noplaylist": noplaylist,
         "socket_timeout": 30,
         "retries": 5,
         "http_headers": {
@@ -98,55 +98,17 @@ async def smart_download(url: str, uid: str) -> list[str]:
         },
     }
 
-    # --- 1. Info olish: bu URL video o'z ichidami? ---
-    has_video = False
+    # --- 1. Media yuklab olish (video yoki rasm) ---
+    media_opts = {
+        **base_opts,
+        "format": "best",
+    }
     try:
-        loop = asyncio.get_event_loop()
-        info_opts = {**base_opts, "skip_download": True}
-        info = await loop.run_in_executor(
-            None,
-            lambda: YoutubeDL(info_opts).extract_info(url, download=False),
-        )
-        if info:
-            vcodec = info.get("vcodec", "none")
-            entries = info.get("entries")  # playlist/album/carousel
-            if entries:
-                for e in entries:
-                    if e and e.get("vcodec", "none") not in (None, "none"):
-                        has_video = True
-                        break
-            else:
-                has_video = vcodec not in (None, "none")
+        await run_ydl(media_opts, url)
     except Exception as e:
-        logger.warning(f"Info extraction xato: {e}")
-        has_video = True  # info ololmadik — video deb sinab ko'ramiz
+        logger.warning(f"Media yuklash xato: {e}")
 
-    # --- 2. Video yuklab olish ---
-    if has_video:
-        video_opts = {
-            **base_opts,
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "merge_output_format": "mp4",
-        }
-        try:
-            await run_ydl(video_opts, url)
-            files = [f for f in find_files(uid) if file_type(f) == "video"]
-            if files:
-                return files
-        except Exception as e:
-            logger.warning(f"Video yuklash xato: {e}")
-
-        # Fallback: har qanday format
-        any_opts = {**base_opts, "format": "best"}
-        try:
-            await run_ydl(any_opts, url)
-            files = [f for f in find_files(uid) if file_type(f) in ("video", "image")]
-            if files:
-                return files
-        except Exception as e:
-            logger.warning(f"Fallback yuklash xato: {e}")
-
-    # --- 3. Rasm yuklab olish (video yo'q bo'lsa) ---
+    # --- 2. Har doim thumbnail yuklab olish ---
     img_tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}_img.%(ext)s")
     img_opts = {
         **base_opts,
@@ -159,14 +121,10 @@ async def smart_download(url: str, uid: str) -> list[str]:
     }
     try:
         await run_ydl(img_opts, url)
-        files = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}_img*"))
-                 if file_type(f) == "image"]
-        if files:
-            return files
     except Exception as e:
         logger.warning(f"Thumbnail yuklash xato: {e}")
 
-    # --- 4. So'nggi urinish: topilgan barcha fayllar ---
+    # --- 3. Barcha yuklangan fayllarni qaytarish ---
     all_files = [f for f in find_files(uid) if file_type(f) in ("video", "image")]
     all_files += [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}_img*"))
                   if file_type(f) in ("video", "image")]
