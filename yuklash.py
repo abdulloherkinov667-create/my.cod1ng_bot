@@ -8,7 +8,7 @@ from yt_dlp import YoutubeDL
 from aiogram import Dispatcher, types, F
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import FSInputFile, InputMediaPhoto, InputMediaVideo
+from aiogram.types import FSInputFile, InputMediaPhoto
 
 logger = logging.getLogger(__name__)
 
@@ -41,19 +41,49 @@ MAIN_KEYBOARD_BUTTONS = [
     "🎬 Video yuklash",
 ]
 
-IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
-VIDEO_EXTENSIONS = {".mp4", ".mkv", ".webm", ".mov", ".avi"}
-
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".avi"}
 DOWNLOAD_DIR = "downloads"
 
 
-def get_ydl_opts(output_template: str, media_type: str = "video") -> dict:
+def cleanup_uid(uid: str):
+    for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}*")):
+        try:
+            os.remove(f)
+        except Exception:
+            pass
+
+
+def find_files(uid: str) -> list[str]:
+    return glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}*"))
+
+
+def file_type(path: str) -> str:
+    ext = os.path.splitext(path)[1].lower()
+    if ext in VIDEO_EXTS:
+        return "video"
+    if ext in IMAGE_EXTS:
+        return "image"
+    return "other"
+
+
+async def run_ydl(opts: dict, url: str):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: YoutubeDL(opts).download([url]))
+
+
+async def smart_download(url: str, uid: str) -> list[str]:
     """
-    yt-dlp opsiyalarini qaytaradi.
-    media_type: 'video' | 'image' | 'auto'
+    URL dan media yuklab oladi.
+    1) Avval URL info oladi — video bormi yo'qmi tekshiradi
+    2) Video bo'lsa — video yuklab beradi
+    3) Video bo'lmasa (faqat rasm/photo) — rasm yuklab beradi
     """
-    base = {
-        "outtmpl": output_template,
+    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+    tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}.%(ext)s")
+
+    base_opts = {
+        "outtmpl": tmpl,
         "quiet": True,
         "no_warnings": True,
         "noplaylist": True,
@@ -68,143 +98,111 @@ def get_ydl_opts(output_template: str, media_type: str = "video") -> dict:
         },
     }
 
-    if media_type == "image":
-        base["format"] = "best"
-        base["writethumbnail"] = True
-        base["skip_download"] = True
-    else:
-        # video: avval mp4, bo'lmasa eng yaxshi format
-        base["format"] = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-        base["merge_output_format"] = "mp4"
-        base["postprocessors"] = [
-            {
-                "key": "FFmpegVideoConvertor",
-                "preferedformat": "mp4",
-            }
-        ]
+    # --- 1. Info olish: bu URL video o'z ichidami? ---
+    has_video = False
+    try:
+        loop = asyncio.get_event_loop()
+        info_opts = {**base_opts, "skip_download": True}
+        info = await loop.run_in_executor(
+            None,
+            lambda: YoutubeDL(info_opts).extract_info(url, download=False),
+        )
+        if info:
+            vcodec = info.get("vcodec", "none")
+            entries = info.get("entries")  # playlist/album/carousel
+            if entries:
+                for e in entries:
+                    if e and e.get("vcodec", "none") not in (None, "none"):
+                        has_video = True
+                        break
+            else:
+                has_video = vcodec not in (None, "none")
+    except Exception as e:
+        logger.warning(f"Info extraction xato: {e}")
+        has_video = True  # info ololmadik — video deb sinab ko'ramiz
 
-    return base
-
-
-def find_downloaded_files(uid: str) -> list[str]:
-    """uid bo'yicha yuklangan barcha fayllarni topadi."""
-    pattern = os.path.join(DOWNLOAD_DIR, f"{uid}*")
-    files = glob.glob(pattern)
-    # Sort: eng katta hajmdagi fayl birinchi
-    files.sort(key=lambda f: os.path.getsize(f) if os.path.exists(f) else 0, reverse=True)
-    return files
-
-
-def classify_file(path: str) -> str:
-    """Fayl turini aniqlaydi: 'video', 'image', 'unknown'"""
-    ext = os.path.splitext(path)[1].lower()
-    if ext in VIDEO_EXTENSIONS:
-        return "video"
-    if ext in IMAGE_EXTENSIONS:
-        return "image"
-    return "unknown"
-
-
-def cleanup(uid: str):
-    """Berilgan uid bilan bog'liq barcha fayllarni o'chiradi."""
-    for f in find_downloaded_files(uid):
+    # --- 2. Video yuklab olish ---
+    if has_video:
+        video_opts = {
+            **base_opts,
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "merge_output_format": "mp4",
+        }
         try:
-            os.remove(f)
-        except Exception:
-            pass
+            await run_ydl(video_opts, url)
+            files = [f for f in find_files(uid) if file_type(f) == "video"]
+            if files:
+                return files
+        except Exception as e:
+            logger.warning(f"Video yuklash xato: {e}")
 
+        # Fallback: har qanday format
+        any_opts = {**base_opts, "format": "best"}
+        try:
+            await run_ydl(any_opts, url)
+            files = [f for f in find_files(uid) if file_type(f) in ("video", "image")]
+            if files:
+                return files
+        except Exception as e:
+            logger.warning(f"Fallback yuklash xato: {e}")
 
-async def download_media(url: str, uid: str) -> list[str]:
-    """
-    URL dan media yuklab oladi.
-    Avval video sifatida sinab ko'radi, 
-    keyin rasm sifatida sinab ko'radi.
-    Yuklangan fayl yo'llarini qaytaradi.
-    """
-    os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-    output_template = os.path.join(DOWNLOAD_DIR, f"{uid}.%(ext)s")
-    loop = asyncio.get_event_loop()
-
-    # --- 1-urinish: Video ---
-    ydl_opts_video = get_ydl_opts(output_template, media_type="video")
+    # --- 3. Rasm yuklab olish (video yo'q bo'lsa) ---
+    img_tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}_img.%(ext)s")
+    img_opts = {
+        **base_opts,
+        "outtmpl": img_tmpl,
+        "skip_download": True,
+        "writethumbnail": True,
+        "postprocessors": [
+            {"key": "FFmpegThumbnailsConvertor", "format": "jpg"},
+        ],
+    }
     try:
-        await loop.run_in_executor(
-            None,
-            lambda: YoutubeDL(ydl_opts_video).download([url]),
-        )
-        files = [f for f in find_downloaded_files(uid) if classify_file(f) in ("video", "image")]
+        await run_ydl(img_opts, url)
+        files = [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}_img*"))
+                 if file_type(f) == "image"]
         if files:
             return files
     except Exception as e:
-        logger.warning(f"Video yuklashda xato: {e}")
+        logger.warning(f"Thumbnail yuklash xato: {e}")
 
-    # --- 2-urinish: Thumbnail/Rasm ---
-    ydl_opts_img = get_ydl_opts(output_template, media_type="image")
-    try:
-        await loop.run_in_executor(
-            None,
-            lambda: YoutubeDL(ydl_opts_img).download([url]),
-        )
-        files = [f for f in find_downloaded_files(uid) if classify_file(f) in ("video", "image")]
-        if files:
-            return files
-    except Exception as e:
-        logger.warning(f"Rasm yuklashda xato: {e}")
-
-    # --- 3-urinish: Hamma formatlar ---
-    ydl_opts_any = get_ydl_opts(output_template, media_type="video")
-    ydl_opts_any["format"] = "best"
-    ydl_opts_any.pop("postprocessors", None)
-    try:
-        await loop.run_in_executor(
-            None,
-            lambda: YoutubeDL(ydl_opts_any).download([url]),
-        )
-        files = [f for f in find_downloaded_files(uid) if classify_file(f) in ("video", "image")]
-        if files:
-            return files
-    except Exception as e:
-        logger.warning(f"Fallback yuklashda xato: {e}")
-
-    return []
+    # --- 4. So'nggi urinish: topilgan barcha fayllar ---
+    all_files = [f for f in find_files(uid) if file_type(f) in ("video", "image")]
+    all_files += [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}_img*"))
+                  if file_type(f) in ("video", "image")]
+    return all_files
 
 
-async def send_media_files(message: types.Message, files: list[str]):
-    """Fayllarni turga qarab yuboradi."""
-    videos = [f for f in files if classify_file(f) == "video"]
-    images = [f for f in files if classify_file(f) == "image"]
-
+async def send_files(message: types.Message, files: list[str]):
     caption = "✅ Yuklandi! Yana havola yuboring yoki /cancel bosing."
+    videos = [f for f in files if file_type(f) == "video"]
+    images = [f for f in files if file_type(f) == "image"]
 
-    # Videolar
     for path in videos:
-        size_mb = os.path.getsize(path) / (1024 * 1024)
+        size_mb = os.path.getsize(path) / 1024 / 1024
         if size_mb > 49:
             await message.answer(
-                f"⚠️ Video hajmi {size_mb:.1f} MB — Telegram 50 MB dan katta fayllarni qabul qilmaydi."
+                f"⚠️ Video {size_mb:.1f} MB — Telegram 50 MB dan katta faylni qabul qilmaydi."
             )
             continue
         await message.answer_video(FSInputFile(path), caption=caption)
+        caption = None
 
-    # Rasmlar (thumbnail yoki to'g'ridan-to'g'ri rasm)
-    if images and not videos:
+    if images:
         if len(images) == 1:
-            await message.answer_photo(FSInputFile(images[0]), caption=caption)
+            await message.answer_photo(
+                FSInputFile(images[0]),
+                caption=caption or "✅ Rasm yuklandi!"
+            )
         else:
-            # Ko'p rasm — album sifatida yuborish
-            media_group = []
-            for i, path in enumerate(images[:10]):  # Telegram max 10
-                media_group.append(
-                    InputMediaPhoto(
-                        media=FSInputFile(path),
-                        caption=caption if i == 0 else None,
-                    )
+            media = [
+                InputMediaPhoto(
+                    media=FSInputFile(p),
+                    caption=(caption or "✅ Rasmlar yuklandi!") if i == 0 else None,
                 )
-            await message.answer_media_group(media_group)
-    elif images and videos:
-        # Rasm ham, video ham bor — rasimlarni ham yuborish
-        for path in images:
-            await message.answer_photo(FSInputFile(path))
+                for i, p in enumerate(images[:10])
+            ]
+            await message.answer_media_group(media)
 
 
 def register_video_handlers(dp: Dispatcher):
@@ -214,102 +212,80 @@ def register_video_handlers(dp: Dispatcher):
         await state.set_state(VideoStates.waiting_for_link)
         await message.answer(
             "🎬 <b>Video / Rasm Yuklash</b>\n\n"
-            "Quyidagi platformalardan havola yuboring:\n\n"
-            "📸 <b>Instagram</b> — post, reel, story, rasm\n"
-            "🎵 <b>TikTok</b> — video, foto\n"
-            "▶️ <b>YouTube</b> — video, shorts\n"
-            "📌 <b>Pinterest</b> — video, rasm\n"
-            "🐦 <b>Twitter/X</b> — video, gif\n"
-            "📘 <b>Facebook</b> — video\n\n"
-            "📎 Havolani yuboring — media avtomatik yuklanadi\n"
+            "Havola tashlang — video bo'lsa <b>video</b>, rasm bo'lsa <b>rasm</b> yuklab beraman!\n\n"
+            "📸 Instagram · 🎵 TikTok · ▶️ YouTube\n"
+            "📌 Pinterest · 🐦 Twitter/X · 📘 Facebook\n\n"
             "❌ Bekor qilish: /cancel",
             parse_mode="HTML",
         )
 
     @dp.message(VideoStates.waiting_for_link)
     async def handle_link(message: types.Message, state: FSMContext):
-        url = message.text.strip() if message.text else ""
+        url = (message.text or "").strip()
 
-        # Tugma bosilsa — rejimdan chiq
         if url in MAIN_KEYBOARD_BUTTONS:
             await state.clear()
-            await message.answer(
-                "⚙️ Video yuklash rejimi bekor qilindi.\n"
-                "Iltimos, tanlangan tugmani qayta bosing."
-            )
+            await message.answer("⚙️ Rejim bekor qilindi. Tugmani qayta bosing.")
             return
 
-        # /cancel
         if url == "/cancel":
             await state.clear()
-            await message.answer(
-                "❌ Video yuklash rejimi bekor qilindi.\n"
-                "Qayta boshlash uchun 🎬 Video yuklash tugmasini bosing."
-            )
+            await message.answer("❌ Bekor qilindi. 🎬 Video yuklash tugmasini bosing.")
             return
 
-        # URL tekshiruvi
         if not (url.startswith("http://") or url.startswith("https://")):
             await message.answer(
                 "❌ <b>Noto'g'ri havola!</b>\n\n"
-                "To'liq URL manzilini yuboring.\n"
-                "<i>Masalan: https://www.tiktok.com/@user/video/...</i>",
+                "To'liq URL yuboring.\n"
+                "<i>Masalan: https://www.instagram.com/p/ABC123/</i>",
                 parse_mode="HTML",
             )
             return
 
-        # Platforma tekshiruvi
-        if not any(domain in url for domain in SUPPORTED_DOMAINS):
+        if not any(d in url for d in SUPPORTED_DOMAINS):
             await message.answer(
                 "⚠️ <b>Qo'llab-quvvatlanmaydigan platforma!</b>\n\n"
-                "Faqat quyidagilardan yuklash mumkin:\n"
                 "Instagram · TikTok · YouTube · Pinterest · Twitter/X · Facebook",
                 parse_mode="HTML",
             )
             return
 
         uid = str(uuid.uuid4())
-        status_msg = await message.answer("⏳ <b>Yuklanmoqda...</b> Kuting ⏳", parse_mode="HTML")
+        status = await message.answer("⏳ <b>Yuklanmoqda...</b>", parse_mode="HTML")
 
         try:
-            files = await download_media(url, uid)
-
-            await status_msg.delete()
+            files = await smart_download(url, uid)
+            await status.delete()
 
             if not files:
                 await message.answer(
-                    "❌ <b>Media yuklab bo'lmadi.</b>\n\n"
-                    "Mumkin sabablar:\n"
+                    "❌ <b>Yuklab bo'lmadi.</b>\n\n"
                     "• Havola noto'g'ri yoki eskirgan\n"
-                    "• Video/rasm yopiq yoki shaxsiy akkauntda\n"
-                    "• Platforma cheklovlari (Instagram login talab qiladi)\n"
-                    "• Story yoki highlight bo'lsa — faqat ochiq akkauntlardan ishlaydi\n\n"
+                    "• Yopiq / shaxsiy akkaunt\n"
+                    "• Platforma cheklovlari\n\n"
                     "Boshqa havola yuboring yoki /cancel bosing.",
                     parse_mode="HTML",
                 )
                 return
 
-            await send_media_files(message, files)
+            await send_files(message, files)
 
         except Exception as e:
             logger.error(f"Xato: {e}", exc_info=True)
             try:
-                await status_msg.delete()
+                await status.delete()
             except Exception:
                 pass
-            await message.answer(
-                "❌ <b>Kutilmagan xato yuz berdi.</b>\n\n"
-                "Boshqa havola yuboring yoki /cancel bosing.",
-                parse_mode="HTML",
-            )
-
+            await message.answer("❌ Kutilmagan xato yuz berdi. Qayta urinib ko'ring.")
         finally:
-            cleanup(uid)
+            cleanup_uid(uid)
+            for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}_img*")):
+                try:
+                    os.remove(f)
+                except Exception:
+                    pass
 
     @dp.message(F.text == "/cancel")
     async def cancel_video(message: types.Message, state: FSMContext):
         await state.clear()
-        await message.answer(
-            "❌ Video yuklash rejimi bekor qilindi.\n"
-            "Qayta boshlash uchun 🎬 Video yuklash tugmasini bosing."
-        )
+        await message.answer("❌ Bekor qilindi. 🎬 Video yuklash tugmasini bosing.")
