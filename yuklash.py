@@ -74,8 +74,8 @@ async def run_ydl(opts: dict, url: str):
 
 async def smart_download(url: str, uid: str) -> list[str]:
     """
-    URL dan media yuklab oladi.
-    Har doim video va rasm yuklab beradi agar mavjud bo'lsa.
+    URL dan video yuklab oladi.
+    Faqat video bo'lsa yuklaydi, rasm yuklamaydi.
     """
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}.%(ext)s")
@@ -98,37 +98,56 @@ async def smart_download(url: str, uid: str) -> list[str]:
         },
     }
 
-    # --- 1. Media yuklab olish (video yoki rasm) ---
-    media_opts = {
-        **base_opts,
-        "format": "best",
-    }
+    # --- 1. Info olish: bu URL video o'z ichidami? ---
+    has_video = False
     try:
-        await run_ydl(media_opts, url)
+        loop = asyncio.get_event_loop()
+        info_opts = {**base_opts, "skip_download": True}
+        info = await loop.run_in_executor(
+            None,
+            lambda: YoutubeDL(info_opts).extract_info(url, download=False),
+        )
+        if info:
+            vcodec = info.get("vcodec", "none")
+            entries = info.get("entries")  # playlist/album/carousel
+            if entries:
+                for e in entries:
+                    if e and e.get("vcodec", "none") not in (None, "none"):
+                        has_video = True
+                        break
+            else:
+                has_video = vcodec not in (None, "none")
     except Exception as e:
-        logger.warning(f"Media yuklash xato: {e}")
+        logger.warning(f"Info extraction xato: {e}")
+        has_video = True  # info ololmadik — video deb sinab ko'ramiz
 
-    # --- 2. Har doim thumbnail yuklab olish ---
-    img_tmpl = os.path.join(DOWNLOAD_DIR, f"{uid}_img.%(ext)s")
-    img_opts = {
-        **base_opts,
-        "outtmpl": img_tmpl,
-        "skip_download": True,
-        "writethumbnail": True,
-        "postprocessors": [
-            {"key": "FFmpegThumbnailsConvertor", "format": "jpg"},
-        ],
-    }
-    try:
-        await run_ydl(img_opts, url)
-    except Exception as e:
-        logger.warning(f"Thumbnail yuklash xato: {e}")
+    # --- 2. Video yuklab olish ---
+    if has_video:
+        video_opts = {
+            **base_opts,
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+            "merge_output_format": "mp4",
+        }
+        try:
+            await run_ydl(video_opts, url)
+            files = [f for f in find_files(uid) if file_type(f) == "video"]
+            if files:
+                return files
+        except Exception as e:
+            logger.warning(f"Video yuklash xato: {e}")
 
-    # --- 3. Barcha yuklangan fayllarni qaytarish ---
-    all_files = [f for f in find_files(uid) if file_type(f) in ("video", "image")]
-    all_files += [f for f in glob.glob(os.path.join(DOWNLOAD_DIR, f"{uid}_img*"))
-                  if file_type(f) in ("video", "image")]
-    return all_files
+        # Fallback: har qanday format
+        any_opts = {**base_opts, "format": "best"}
+        try:
+            await run_ydl(any_opts, url)
+            files = [f for f in find_files(uid) if file_type(f) == "video"]
+            if files:
+                return files
+        except Exception as e:
+            logger.warning(f"Fallback yuklash xato: {e}")
+
+    # Video yo'q bo'lsa, hech narsa yuklamaymiz
+    return []
 
 
 async def send_files(message: types.Message, files: list[str]):
@@ -169,8 +188,8 @@ def register_video_handlers(dp: Dispatcher):
     async def start_video_download(message: types.Message, state: FSMContext):
         await state.set_state(VideoStates.waiting_for_link)
         await message.answer(
-            "🎬 <b>Video / Rasm Yuklash</b>\n\n"
-            "Havola tashlang — video bo'lsa <b>video</b>, rasm bo'lsa <b>rasm</b> yuklab beraman!\n\n"
+            "🎬 <b>Video Yuklash</b>\n\n"
+            "Havola tashlang — video yuklab beraman!\n\n"
             "📸 Instagram · 🎵 TikTok · ▶️ YouTube\n"
             "📌 Pinterest · 🐦 Twitter/X · 📘 Facebook\n\n"
             "❌ Bekor qilish: /cancel",
