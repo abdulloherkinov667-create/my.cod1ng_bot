@@ -101,7 +101,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             f"{text}\n\n"
             f"━━━━━━━━━━━━━━━"
         )
-        for admin_id in ADMIN_IDS:                                                         
+        for admin_id in ADMIN_IDS:
             try:
                 await bot.send_message(admin_id, admin_msg, parse_mode="HTML")
             except Exception:
