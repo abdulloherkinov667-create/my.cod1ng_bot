@@ -265,7 +265,7 @@ async def text_yubor(message: types.Message, state: FSMContext):
         reply_markup=user_button(),
     )
     await state.clear()
-
+print("Bot ishga tush")
 
 @dp.message(SendText.confirm, F.text == "Yo'q ❌")
 async def text_bekor(message: types.Message, state: FSMContext):
