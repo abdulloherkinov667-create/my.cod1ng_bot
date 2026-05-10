@@ -20,7 +20,8 @@ from yuklash import register_video_handlers
 from shikoyat import register_complaint_handlers
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-ADMIN_IDS = [6411347321]
+ADMIN_IDS = []
+RESTRICTED_USERS = [6411347321]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
@@ -78,6 +79,9 @@ async def start_command(message: types.Message):
 
 @dp.message(F.text == "Kino ko'rish 🎥")
 async def kino_korish(message: types.Message):
+    if message.from_user.id in RESTRICTED_USERS:
+        await message.answer("⛔ Sangaa bunday huquq yo'q")
+        return
     await message.answer(
         "Uzr 🙏 Ushbu funksiya hozircha to'liq ishga tushmagan.\n"
         "Hozirda uni yaxshilash ustida ishlayapmiz va yaqin orada foydalanish mumkin bo'ladi."
@@ -149,6 +153,9 @@ async def xabar_yuborish_boshlash(message: types.Message):
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id in RESTRICTED_USERS:
+        await callback.answer("⛔ Sangaa bunday huquq yo'q", show_alert=True)
+        return
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔ Ruxsat yo'q", show_alert=True)
         return
@@ -226,6 +233,9 @@ class SendText(StatesGroup):
 
 @dp.callback_query(F.data == "text_msg")
 async def text_msg_start(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id in RESTRICTED_USERS:
+        await callback.answer("⛔ Sangaa bunday huquq yo'q", show_alert=True)
+        return
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔ Ruxsat yo'q", show_alert=True)
         return

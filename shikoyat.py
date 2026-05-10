@@ -8,7 +8,8 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemo
 from buttons.defould import start_button, user_button
 
 # Admin ID ni shu yerga o'zini yozib qo'ying
-ADMIN_IDS = [6411347321] 
+ADMIN_IDS = []
+RESTRICTED_USERS = [6411347321] 
 
 class ComplaintStates(StatesGroup):
     waiting_for_name = State()
@@ -41,6 +42,9 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(F.text == "Shikoyat qilish 📝")
     async def start_complaint(message: types.Message, state: FSMContext):
+        if message.from_user.id in RESTRICTED_USERS:
+            await message.answer("⛔ Sangaa bunday huquq yo'q")
+            return
         await state.set_state(ComplaintStates.waiting_for_name)
         await message.answer(
             "<b>Ismingizni kiriting:</b>",
@@ -111,6 +115,9 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(F.text == "Mening shikoyatlarim 📋")
     async def show_user_complaints(message: types.Message):
+        if message.from_user.id in RESTRICTED_USERS:
+            await message.answer("⛔ Sangaa bunday huquq yo'q")
+            return
         conn = sqlite3.connect("shikoyat_baza.db")
         cursor = conn.cursor()
         cursor.execute("SELECT text FROM complaints WHERE user_id = ?", (message.from_user.id,))
