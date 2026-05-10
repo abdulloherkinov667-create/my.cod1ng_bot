@@ -2,11 +2,13 @@ import sqlite3
 from aiogram import Dispatcher, types, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from main import RESTRICTED_USERS, ADMIN_IDS
+from main import ADMIN_IDS
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 from buttons.defould import start_button, user_button
 
+# Admin ID ni shu yerga o'zini yozib qo'ying
+RESTRICTED_USERS = [6411347321z] 
 
 class ComplaintStates(StatesGroup):
     waiting_for_name = State()
@@ -39,6 +41,9 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(F.text == "Shikoyat qilish 📝")
     async def start_complaint(message: types.Message, state: FSMContext):
+        if message.from_user.id in RESTRICTED_USERS:
+            await message.answer("⛔ Sizga shikoyat yuborish taqiqlangan.")
+            return
         await state.set_state(ComplaintStates.waiting_for_name)
         await message.answer(
             "<b>Ismingizni kiriting:</b>",
@@ -48,6 +53,10 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(ComplaintStates.waiting_for_name)
     async def get_name(message: types.Message, state: FSMContext):
+        if message.from_user.id in RESTRICTED_USERS:
+            await state.clear()
+            await message.answer("⛔ Sizga shikoyat yuborish taqiqlangan.")
+            return
         await state.update_data(name=message.text)
         await state.set_state(ComplaintStates.waiting_for_phone)
         await message.answer("""
@@ -60,6 +69,10 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(ComplaintStates.waiting_for_phone)
     async def get_phone(message: types.Message, state: FSMContext):
+        if message.from_user.id in RESTRICTED_USERS:
+            await state.clear()
+            await message.answer("⛔ Sizga shikoyat yuborish taqiqlangan.")
+            return
         if message.contact:
             phone = message.contact.phone_number
         else:
@@ -75,6 +88,10 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(ComplaintStates.waiting_for_text)
     async def get_text(message: types.Message, state: FSMContext):
+        if message.from_user.id in RESTRICTED_USERS:
+            await state.clear()
+            await message.answer("⛔ Sizga shikoyat yuborish taqiqlangan.")
+            return
         data = await state.get_data()
         user_id = message.from_user.id
         name = data['name']

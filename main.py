@@ -13,7 +13,6 @@ from aiogram.types import (
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.dispatcher.middleware.base import BaseMiddleware
 
 from buttons.defould import user_button, start_button, yoq_button
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
@@ -21,27 +20,9 @@ from yuklash import register_video_handlers
 from shikoyat import register_complaint_handlers
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-ADMIN_IDS = [8377358077]
-RESTRICTED_USERS = [6411347321]
-
-# ──── Middleware ────────────────────────────────────────────
-class RestrictedUserMiddleware(BaseMiddleware):
-    async def __call__(self, handler, event, data):
-        if isinstance(event, types.Message):
-            user_id = event.from_user.id
-            if user_id in RESTRICTED_USERS:
-                return  # Hech javob bermay bloklash
-        elif isinstance(event, types.CallbackQuery):
-            user_id = event.from_user.id
-            if user_id in RESTRICTED_USERS:
-                return  # Hech javob bermay bloklash
-        
-        return await handler(event, data)
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-dp.message.middleware(RestrictedUserMiddleware())
-dp.callback_query.middleware(RestrictedUserMiddleware())
 register_video_handlers(dp)
 register_complaint_handlers(dp, bot)
 
