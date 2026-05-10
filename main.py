@@ -16,14 +16,14 @@ from aiogram.fsm.state import State, StatesGroup
 
 from buttons.defould import user_button, start_button, yoq_button
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
-from yuklash import register_video_handlers
+
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-ADMIN_IDS = [8377358077 ]
+ADMIN_IDS = [6411347321]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
-register_video_handlers(dp)
+
 
 class SendImg(StatesGroup):
     image = State()
