@@ -30,13 +30,11 @@ class RestrictedUserMiddleware(BaseMiddleware):
         if isinstance(event, types.Message):
             user_id = event.from_user.id
             if user_id in RESTRICTED_USERS:
-                await event.answer("⛔ Sangaa bunday huquq yo'q")
-                return
+                return  # Hech javob bermay bloklash
         elif isinstance(event, types.CallbackQuery):
             user_id = event.from_user.id
             if user_id in RESTRICTED_USERS:
-                await event.answer("⛔ Sangaa bunday huquq yo'q", show_alert=True)
-                return
+                return  # Hech javob bermay bloklash
         
         return await handler(event, data)
 

@@ -2,13 +2,11 @@ import sqlite3
 from aiogram import Dispatcher, types, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-# from main import ADMIN_IDS  <-- Buni o'chiring, xato berishi mumkin
+from main import RESTRICTED_USERS, ADMIN_IDS
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 from buttons.defould import start_button, user_button
 
-# Admin ID ni shu yerga o'zini yozib qo'ying
-ADMIN_IDS = [6411347321] 
 
 class ComplaintStates(StatesGroup):
     waiting_for_name = State()
