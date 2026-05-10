@@ -13,6 +13,7 @@ from aiogram.types import (
 )
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.dispatcher.middleware.base import BaseMiddleware
 
 from buttons.defould import user_button, start_button, yoq_button
 from create import insert_user, users_table, create_user_pdf, get_all_users, check_blocked_users
@@ -23,8 +24,26 @@ API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
 ADMIN_IDS = [8377358077]
 RESTRICTED_USERS = [6411347321]
 
+# ──── Middleware ────────────────────────────────────────────
+class RestrictedUserMiddleware(BaseMiddleware):
+    async def __call__(self, handler, event, data):
+        if isinstance(event, types.Message):
+            user_id = event.from_user.id
+            if user_id in RESTRICTED_USERS:
+                await event.answer("⛔ Sangaa bunday huquq yo'q")
+                return
+        elif isinstance(event, types.CallbackQuery):
+            user_id = event.from_user.id
+            if user_id in RESTRICTED_USERS:
+                await event.answer("⛔ Sangaa bunday huquq yo'q", show_alert=True)
+                return
+        
+        return await handler(event, data)
+
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
+dp.message.middleware(RestrictedUserMiddleware())
+dp.callback_query.middleware(RestrictedUserMiddleware())
 register_video_handlers(dp)
 register_complaint_handlers(dp, bot)
 
@@ -79,9 +98,6 @@ async def start_command(message: types.Message):
 
 @dp.message(F.text == "Kino ko'rish 🎥")
 async def kino_korish(message: types.Message):
-    if message.from_user.id in RESTRICTED_USERS:
-        await message.answer("⛔ Sangaa bunday huquq yo'q")
-        return
     await message.answer(
         "Uzr 🙏 Ushbu funksiya hozircha to'liq ishga tushmagan.\n"
         "Hozirda uni yaxshilash ustida ishlayapmiz va yaqin orada foydalanish mumkin bo'ladi."
@@ -153,9 +169,6 @@ async def xabar_yuborish_boshlash(message: types.Message):
 
 @dp.callback_query(F.data == "img")
 async def rasm_bosildi(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id in RESTRICTED_USERS:
-        await callback.answer("⛔ Sangaa bunday huquq yo'q", show_alert=True)
-        return
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔ Ruxsat yo'q", show_alert=True)
         return
@@ -233,9 +246,6 @@ class SendText(StatesGroup):
 
 @dp.callback_query(F.data == "text_msg")
 async def text_msg_start(callback: types.CallbackQuery, state: FSMContext):
-    if callback.from_user.id in RESTRICTED_USERS:
-        await callback.answer("⛔ Sangaa bunday huquq yo'q", show_alert=True)
-        return
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("⛔ Ruxsat yo'q", show_alert=True)
         return

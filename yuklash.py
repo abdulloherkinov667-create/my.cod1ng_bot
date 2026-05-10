@@ -165,15 +165,10 @@ async def send_media(message: types.Message, files: list[str]):
 
 # ── Handler'lar ────────────────────────────────────────────────────────────────
 
-RESTRICTED_USERS = [8377358077]
-
 def register_video_handlers(dp: Dispatcher):
 
     @dp.message(F.text == "🎬 Video yuklash")
     async def start(message: types.Message, state: FSMContext):
-        if message.from_user.id in RESTRICTED_USERS:
-            await message.answer("⛔ Sangaa bunday huquq yo'q")
-            return
         await state.set_state(VideoStates.waiting_for_link)
         await message.answer(
             "🎬 <b>Video / Rasm Yuklash</b>\n\n"
