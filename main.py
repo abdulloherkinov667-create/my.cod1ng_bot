@@ -20,6 +20,7 @@ from yuklash import register_video_handlers
 from shikoyat import register_complaint_handlers
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
+ADMIN_IDS = [8377358077]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()

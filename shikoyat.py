@@ -8,7 +8,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemo
 from buttons.defould import start_button, user_button
 
 # Admin ID ni shu yerga o'zini yozib qo'ying
-RESTRICTED_USERS = [6411347321z] 
+RESTRICTED_USERS = [6411347321] 
 
 class ComplaintStates(StatesGroup):
     waiting_for_name = State()
