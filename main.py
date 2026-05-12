@@ -27,7 +27,7 @@ bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 
 register_video_handlers(dp)
-register_complaint_handlers(dp, bot)
+register_complaint_handlers(dp, bot, ADMIN_IDS)
 
 
 class SendImg(StatesGroup):

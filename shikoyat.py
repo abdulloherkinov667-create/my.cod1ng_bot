@@ -3,7 +3,6 @@ from aiogram import Dispatcher, types, F, Bot
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from main import ADMIN_IDS
 from buttons.defould import start_button, user_button
 
 class ComplaintStates(StatesGroup):
@@ -32,7 +31,7 @@ def get_phone_kb():
         one_time_keyboard=True
     )
 
-def register_complaint_handlers(dp: Dispatcher, bot: Bot):
+def register_complaint_handlers(dp: Dispatcher, bot: Bot, admin_ids: list):
     init_db()
 
     @dp.message(F.text == "Shikoyat qilish 📝")
@@ -97,7 +96,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
             f"{text}\n\n"
             f"━━━━━━━━━━━━━━━"
         )
-        for admin_id in ADMIN_IDS:
+        for admin_id in admin_ids:
             try:
                 await bot.send_message(admin_id, admin_msg, parse_mode="HTML")
             except Exception:
@@ -124,7 +123,7 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot):
 
     @dp.message(F.text == "Shikoyatlar ro‘yxati 📝")
     async def show_all_complaints(message: types.Message):
-        if message.from_user.id not in ADMIN_IDS:
+        if message.from_user.id not in admin_ids:
             return
 
         conn = sqlite3.connect("shikoyat_baza.db")
