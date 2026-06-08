@@ -61,6 +61,7 @@ async def users_table():
 
 
 
+
 # ----------------------- USER FUNCTIONS -----------------------
 def insert_user(first_name, username, language_code, is_bot, chat_id, created_at):
     try:
