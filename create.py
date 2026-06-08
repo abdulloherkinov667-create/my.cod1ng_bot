@@ -50,7 +50,12 @@ async def users_table():
             created_at DATETIME
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_id ON users(chat_id)")
+    try:
+        cursor.execute("CREATE INDEX idx_chat_id ON users(chat_id)")
+    except MySQLdb.OperationalError as e:
+        # Index already exists, ignore the error
+        if "Duplicate key name" not in str(e):
+            raise
     conn.commit()
     conn.close()
 
