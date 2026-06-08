@@ -1,6 +1,7 @@
-import sqlite3
-from tkinter import Canvas
-import aiosqlite
+import os
+
+import MySQLdb
+import dj_database_url
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle
@@ -9,35 +10,61 @@ from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 
+def get_db_config():
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise RuntimeError("DATABASE_URL environment variable is not set")
 
-dp = sqlite3.connect("users.db")
-cursor = dp.cursor()
+    config = dj_database_url.parse(database_url, engine="mysql")
+    if not config.get("NAME"):
+        raise RuntimeError("DATABASE_URL is invalid or missing the database name")
+
+    return config
+
+
+def get_db_connection():
+    config = get_db_config()
+    return MySQLdb.connect(
+        host=config.get("HOST", "localhost") or "localhost",
+        port=int(config.get("PORT") or 3306),
+        user=config.get("USER", ""),
+        passwd=config.get("PASSWORD", ""),
+        db=config.get("NAME"),
+        charset="utf8mb4",
+        use_unicode=True,
+        autocommit=False,
+    )
 
 async def users_table():
-    async with aiosqlite.connect("users.db") as db:
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS users(
-                id INTEGER PRIMARY KEY,
-                first_name TEXT,
-                username TEXT,
-                language_code TEXT,
-                is_bot BOOLEAN,
-                chat_id INTEGER UNIQUE,
-                is_blocked INTEGER DEFAULT 0,
-                created_at DATETIME
-            )
-        """)
-        await db.execute("CREATE INDEX IF NOT EXISTS idx_chat_id ON users(chat_id)")
-        await db.commit()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users(
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            first_name VARCHAR(255),
+            username VARCHAR(255),
+            language_code VARCHAR(20),
+            is_bot BOOLEAN,
+            chat_id BIGINT UNIQUE,
+            is_blocked TINYINT DEFAULT 0,
+            created_at DATETIME
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_id ON users(chat_id)")
+    conn.commit()
+    conn.close()
 
 
 
 # ----------------------- USER FUNCTIONS -----------------------
 def insert_user(first_name, username, language_code, is_bot, chat_id, created_at):
     try:
-        conn = sqlite3.connect('users.db')
+        conn = get_db_connection()
         curr = conn.cursor()
-        query = "INSERT OR IGNORE INTO users(first_name, username, language_code, is_bot, chat_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+        query = (
+            "INSERT IGNORE INTO users(first_name, username, language_code, is_bot, chat_id, created_at) "
+            "VALUES (%s, %s, %s, %s, %s, %s)"
+        )
         curr.execute(query, (first_name, username, language_code, is_bot, chat_id, created_at))
         conn.commit()
         return True
@@ -54,7 +81,7 @@ def insert_user(first_name, username, language_code, is_bot, chat_id, created_at
         
 #------------------------ USERLARNI BAZADAN OLISH -----------------------
 def get_all_users():
-    conn = sqlite3.connect("users.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT id, first_name, username, chat_id, created_at, is_blocked
@@ -68,7 +95,7 @@ def get_all_users():
 #------------------------ BLOKED USERLARNI TEKSHIRISH -----------------------
 async def check_blocked_users(bot):
     users = get_all_users()
-    conn = sqlite3.connect("users.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
     for user in users:
         chat_id = user[3]
@@ -76,13 +103,13 @@ async def check_blocked_users(bot):
             # Test message yuborish
             await bot.send_chat_action(chat_id=chat_id, action="typing")
             # Agar muvaffaqiyatli bo'lsa, bloklanmagan
-            cursor.execute("UPDATE users SET is_blocked = 0 WHERE chat_id = ?", (chat_id,))
+            cursor.execute("UPDATE users SET is_blocked = %s WHERE chat_id = %s", (0, chat_id))
         except (TelegramBadRequest, TelegramForbiddenError):
             # Bloklangan
-            cursor.execute("UPDATE users SET is_blocked = 1 WHERE chat_id = ?", (chat_id,))
+            cursor.execute("UPDATE users SET is_blocked = %s WHERE chat_id = %s", (1, chat_id))
         except Exception:
             # Boshqa xato, ehtimol bloklangan
-            cursor.execute("UPDATE users SET is_blocked = 1 WHERE chat_id = ?", (chat_id,))
+            cursor.execute("UPDATE users SET is_blocked = %s WHERE chat_id = %s", (1, chat_id))
     conn.commit()
     conn.close()
         
@@ -150,9 +177,12 @@ def create_user_pdf():
 
 
 def setup_db():
-    conn = sqlite3.connect("kinobaza.db")
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("CREATE TABLE IF NOT EXISTS movies (code TEXT PRIMARY KEY, file_id text)")
+    cursor.execute(
+        "CREATE TABLE IF NOT EXISTS movies (code VARCHAR(255) PRIMARY KEY, file_id TEXT) "
+        "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4"
+    )
     conn.commit()
     conn.close()
 
