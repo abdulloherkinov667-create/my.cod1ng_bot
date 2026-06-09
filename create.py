@@ -35,6 +35,7 @@ def get_db_connection():
         autocommit=False,
     )
 
+
 async def users_table():
     conn = get_db_connection()
     cursor = conn.cursor()
