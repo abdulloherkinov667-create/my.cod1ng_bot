@@ -177,8 +177,7 @@ async def caption_qabul(message: types.Message, state: FSMContext):
 
     await message.answer_photo(
         photo=data["photo"],
-        caption=f"📝 *Ko'rinishi:*\n\n{data['about']}",
-        parse_mode="Markdown",
+        caption=f"📝 Ko'rinishi:\n\n{data['about']}",
     )
     await message.answer(
         "📨 *Barcha foydalanuvchilarga yuborilsinmi?*",
