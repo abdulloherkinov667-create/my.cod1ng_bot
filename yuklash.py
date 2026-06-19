@@ -10,6 +10,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import FSInputFile, InputMediaPhoto
 
+from buttons.defould import start_button
+
 logger = logging.getLogger(__name__)
 
 
@@ -185,10 +187,8 @@ def register_video_handlers(dp: Dispatcher):
     async def handle_link(message: types.Message, state: FSMContext):
         url = (message.text or "").strip()
 
-        # Tugma bosildi yoki menyu tanlovi
         if url in NAVIGATION_TEXTS:
             await state.clear()
-            await message.answer("⚙️ Rejim bekor qilindi. Endi boshqa tugmani bosing.")
             return
 
         # /cancel
@@ -248,4 +248,4 @@ def register_video_handlers(dp: Dispatcher):
     @dp.message(F.text == "/cancel")
     async def cancel(message: types.Message, state: FSMContext):
         await state.clear()
-        await message.answer("❌ Bekor qilindi. 🎬 Video yuklash tugmasini bosing.")
+        await message.answer("❌ Bekor qilindi. ", reply_markup=start_button())
