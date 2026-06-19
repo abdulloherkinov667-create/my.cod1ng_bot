@@ -26,14 +26,16 @@ SUPPORTED_DOMAINS = [
     "vimeo.com",
 ]
 
-MAIN_KEYBOARD_BUTTONS = [
+NAVIGATION_TEXTS = [
+    "Kino ko'rish 🎥",
+    "Yordam 💬",
+    "Shikoyat qilish 📝",
+    "Mening shikoyatlarim 📋",
+    "🎬 Video yuklash",
     "Userlarni PDF korsh 👥",
     "Userlarni soni 👥",
     "Xabar yuborish 📨",
-    "👥 User soni ko'rish",
-    "Kino ko'rish 🎥",
-    "Shikoyat qilish 📝",
-    "🎬 Video yuklash",
+    "Shikoyatlar ro‘yxati 📝",
 ]
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -183,10 +185,10 @@ def register_video_handlers(dp: Dispatcher):
     async def handle_link(message: types.Message, state: FSMContext):
         url = (message.text or "").strip()
 
-        # Tugma bosildi
-        if url in MAIN_KEYBOARD_BUTTONS:
+        # Tugma bosildi yoki menyu tanlovi
+        if url in NAVIGATION_TEXTS:
             await state.clear()
-            await message.answer("⚙️ Rejim bekor qilindi. Tugmani qayta bosing.")
+            await message.answer("⚙️ Rejim bekor qilindi. Endi boshqa tugmani bosing.")
             return
 
         # /cancel
@@ -232,6 +234,7 @@ def register_video_handlers(dp: Dispatcher):
                 return
 
             await send_media(message, files)
+            await state.clear()
 
         except Exception as e:
             logger.error(f"Xato: {e}", exc_info=True)

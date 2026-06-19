@@ -94,7 +94,10 @@ async def yordam(message: types.Message):
         "Bu bot orqali siz:\n"
         "• Shikoyat yuborishingiz mumkin\n"
         "• Kino ko'rishingiz mumkin (tez kunda)\n\n"
-        "Muammo bo'lsa @admin ga yozing.",
+        "• Video havolalardan video/rasm yuklashingiz mumkin\n\n"
+        "🔹 Video yuklashni bosgach, faqat bitta havola yuboring.\n"
+        "🔹 Agar noto‘g‘ri havola bo‘lsa, /cancel bilan qayta urinib ko‘ring.\n"
+        "🔹 Shikoyatingiz maxfiy saqlanadi va faqat adminlar tomonidan ko‘riladi.",
         parse_mode="Markdown",
     )
 

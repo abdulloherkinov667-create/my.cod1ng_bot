@@ -45,6 +45,11 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot, admin_ids: list):
 
     @dp.message(ComplaintStates.waiting_for_name)
     async def get_name(message: types.Message, state: FSMContext):
+        if message.text and message.text.lower() == "/cancel":
+            await state.clear()
+            await message.answer("❌ Shikoyat jarayoni bekor qilindi.", reply_markup=start_button())
+            return
+
         await state.update_data(name=message.text)
         await state.set_state(ComplaintStates.waiting_for_phone)
         await message.answer("""
@@ -53,10 +58,17 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot, admin_ids: list):
 
         🔍 Murojaatingiz operatorlar tomonidan ko'rib chiqiladi va zarurat tug'ilganda siz bilan bog'lanishlari mumkin. 
         👤 Iltimos, telefon raqamingizni yuboring.
+
+        ✳️ Agar xato kiritsangiz, /cancel buyrug'ini bosing.
         """, reply_markup=get_phone_kb())
 
     @dp.message(ComplaintStates.waiting_for_phone)
     async def get_phone(message: types.Message, state: FSMContext):
+        if message.text and message.text.lower() == "/cancel":
+            await state.clear()
+            await message.answer("❌ Shikoyat jarayoni bekor qilindi.", reply_markup=start_button())
+            return
+
         if message.contact:
             phone = message.contact.phone_number
         else:
@@ -72,6 +84,11 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot, admin_ids: list):
 
     @dp.message(ComplaintStates.waiting_for_text)
     async def get_text(message: types.Message, state: FSMContext):
+        if message.text and message.text.lower() == "/cancel":
+            await state.clear()
+            await message.answer("❌ Shikoyat jarayoni bekor qilindi.", reply_markup=start_button())
+            return
+
         data = await state.get_data()
         user_id = message.from_user.id
         name = data['name']
@@ -85,7 +102,11 @@ def register_complaint_handlers(dp: Dispatcher, bot: Bot, admin_ids: list):
         conn.commit()
         conn.close()
 
-        await message.answer("✅ Shikoyatingiz qabul qilindi!", reply_markup=start_button())
+        await message.answer(
+            "✅ Shikoyatingiz qabul qilindi!\n\n"
+            "🔒 Sizning ma’lumotlaringiz himoyalangan va faqat adminlar tomonidan ko‘rib chiqiladi.",
+            reply_markup=start_button()
+        )
 
         admin_msg = (
             f"📢 <b>Yangi shikoyat</b>\n"
