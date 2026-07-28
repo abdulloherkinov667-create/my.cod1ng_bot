@@ -21,7 +21,7 @@ from shikoyat import register_complaint_handlers
 
 
 API_TOKEN = "8301002449:AAFzKdU48I4Q0nuTxDnY9725MITFVA7w9ok"
-ADMIN_IDS = [6411347321]
+ADMIN_IDS = [8899336504]
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()

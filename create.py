@@ -36,7 +36,7 @@ def get_db_connection():
     )
 
 
-async def users_table():
+async def users_table():    
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
